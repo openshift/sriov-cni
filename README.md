@@ -124,4 +124,4 @@ EOF
 [More info](https://github.com/containernetworking/cni/pull/259).
 
 ## Contacts
-For any questions about Multus CNI, please reach out on github issue or feel free to contact the developers @kural OR @ahalim in our [Intel-Corp Slack](https://intel-corp.herokuapp.com/) 
+For any questions about Multus CNI, please reach out on github issue or feel free to contact the developers @kural OR @ahalim in our [Intel-Corp Slack](https://intel-corp.herokuapp.com/)
