@@ -128,8 +128,14 @@ func GetSharedPF(ifName string) (string, error) {
 	}
 
 	fullpath, err := filepath.EvalSymlinks(pfDir)
+	if err != nil {
+		return pfName, fmt.Errorf("Can't evaluate symbolic links for directory %q: %v", pfDir, err)
+	}
 	parentDir := fullpath[:len(fullpath)-len(ifName)]
 	dirList, err := ioutil.ReadDir(parentDir)
+	if err != nil {
+		return pfName, fmt.Errorf("Can't read the directory %q: %v", parentDir, err)
+	}
 
 	for _, file := range dirList {
 		if file.Name() != ifName {
