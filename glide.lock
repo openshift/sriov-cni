@@ -1,8 +1,8 @@
-hash: 25e9271fca0de47d3e14bae4c999cc53ea4787f50817c941cc3a6cf835045ba6
-updated: 2019-03-13T16:15:00.478512528Z
+hash: bdc1c5bc69fdf4f5090517250bd6b594ad7a13615c00ec2715351be3f5fae0d9
+updated: 2019-09-25T00:30:57.166016471+03:00
 imports:
 - name: github.com/containernetworking/cni
-  version: a2da8f8d7fd8e6dc25f336408a8ac86f050fbd88
+  version: dc953e2fd91f9bc624b03cf9ea3706796bfee920
   subpackages:
   - pkg/invoke
   - pkg/skel
@@ -12,15 +12,16 @@ imports:
   - pkg/types/current
   - pkg/version
 - name: github.com/containernetworking/plugins
-  version: 9ebe139e77e82afb122e335328007bca86905ae4
+  version: 2b6808807facbadf4f1190d7665d7e1fc19efd93
   subpackages:
   - pkg/ip
   - pkg/ipam
   - pkg/ns
+  - pkg/testutils
   - pkg/utils/hwaddr
   - pkg/utils/sysctl
 - name: github.com/coreos/go-iptables
-  version: 259c8e6a4275d497442c721fa52204d7a58bde8b
+  version: 78b5fff24e6df8886ef8eca9411f683a884349a5
   subpackages:
   - iptables
 - name: github.com/onsi/ginkgo
@@ -54,19 +55,21 @@ imports:
   - matchers/support/goraph/node
   - matchers/support/goraph/util
   - types
+- name: github.com/safchain/ethtool
+  version: 42ed695e3de80b9d695f280295fd7994639f209d
 - name: github.com/stretchr/testify
-  version: ffdc059bfe9ce6a4e144ba849dbedead332c6053
+  version: 221dbe5ed46703ee255b1da0dec05086f5035f62
   subpackages:
   - assert
   - mock
 - name: github.com/vishvananda/netlink
-  version: 6e453822d85ef5721799774b654d4d02fed62afb
+  version: 07ace697bea4b7641fbc6dcf7c90432c6b8bea5c
   subpackages:
   - nl
 - name: github.com/vishvananda/netns
   version: 54f0e4339ce73702a0607f49922aaa1e749b418d
 - name: golang.org/x/sys
-  version: 076b546753157f758b316e59bcb51e6807c04057
+  version: fae7ac547cb717d141c433a2a173315e216b64c4
   subpackages:
   - unix
 testImports:
@@ -79,4 +82,6 @@ testImports:
   subpackages:
   - difflib
 - name: github.com/stretchr/objx
-  version: c61a9dfcced1815e7d40e214d00d1a8669a9f58c
+  version: 35313a95ee26395aa17d366c71a2ccf788fa69b6
+- name: gopkg.in/yaml.v2
+  version: 51d6538a90f86fe93ac480b35f37b2be17fef232

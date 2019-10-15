@@ -1,4 +1,4 @@
-[![Build Status](https://travis-ci.org/intel/sriov-cni.svg?branch=master)](https://travis-ci.org/intel/sriov-cni)
+[![Build Status](https://travis-ci.org/intel/sriov-cni.svg?branch=master)](https://travis-ci.org/intel/sriov-cni) [![Go Report Card](https://goreportcard.com/badge/github.com/intel/sriov-cni)](https://goreportcard.com/report/github.com/intel/sriov-cni)
 
    * [SR-IOV CNI plugin](#sr-iov-cni-plugin)
       * [Build](#build)
@@ -138,8 +138,15 @@ echo 8 > /sys/class/net/enp2s0f0/device/sriov_numvfs
 * `name` (string, required): the name of the network
 * `type` (string, required): "sriov"
 * `deviceID` (string, required): A valid pci address of an SRIOV NIC's VF. e.g. "0000:03:02.3"
-* `vlan` (int, optional): VLAN ID to assign for the VF
+* `vlan` (int, optional): VLAN ID to assign for the VF. Value must be in the range 0-4094 (0 for disabled, 1-4094 for valid VLAN IDs).
+* `vlanQoS` (int, optional): VLAN QoS to assign for the VF. Value must be in the range 0-7. This option requires `vlan` field to be set to a non-zero value. Otherwise, the error will be returned.
+* `mac` (string, optional): MAC address to assign for the VF
 * `ipam` (dictionary, optional): IPAM configuration to be used for this network.
+* `spoofchk` (string, optional): turn packet spoof checking on or off for the VF
+* `trust` (string, optional): turn trust setting on or off for the VF
+* `link_state` (string, optional): enforce link state for the VF. Allowed values: auto, enable, disable. Note that driver support may differ for this feature. For example, `i40e` is known to work but `igb` doesn't.
+* `max_tx_rate` (int, optional): change the allowed maximum transmit bandwidth, in Mbps, for the VF. 
+Setting this to 0 disables rate limiting.
 
 
 ### Using DPDK drivers:
@@ -204,6 +211,25 @@ lo        Link encap:Local Loopback
     "type": "sriov",
     "deviceID": "0000:03:02.0",
     "vlan": 1000
+}
+EOF
+```
+
+### Configuration with VF Flags:
+
+
+```
+# cat > /etc/cni/net.d/20-mynet-dpdk.conf <<EOF
+{
+    "cniVersion": "0.3.1",
+    "name": "sriov-dpdk",
+    "type": "sriov",
+    "deviceID": "0000:03:02.0",
+    "vlan": 1000,
+    "max_tx_rate": 100,
+    "spoofchk": "off",
+    "trust": "on"
+    "link_state": "enable"
 }
 EOF
 ```
