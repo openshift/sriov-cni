@@ -8,7 +8,6 @@
       * [Configuration reference](#configuration-reference)
          * [Main parameters](#main-parameters)
          * [Using DPDK drivers:](#using-dpdk-drivers)
-         * [DPDK parameters](#dpdk-parameters)
       * [Usage](#usage)
          * [Configuration with IPAM:](#configuration-with-ipam)
          * [Configuration with DPDK:](#configuration-with-dpdk)
@@ -133,6 +132,8 @@ echo 0 > /sys/class/net/enp2s0f0/device/sriov_numvfs
 echo 8 > /sys/class/net/enp2s0f0/device/sriov_numvfs
 ```
 
+Note: In case spoofchk is enabled for VF, a valid administrative MAC needs to be specified.
+
 ## Configuration reference
 ### Main parameters
 * `name` (string, required): the name of the network
@@ -230,7 +231,7 @@ EOF
     "min_tx_rate": 100,
     "max_tx_rate": 200,
     "spoofchk": "off",
-    "trust": "on"
+    "trust": "on",
     "link_state": "enable"
 }
 EOF
