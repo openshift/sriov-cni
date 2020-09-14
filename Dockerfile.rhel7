@@ -1,6 +1,6 @@
 FROM registry.ci.openshift.org/ocp/builder:rhel-8-golang-1.15-openshift-4.7 AS builder
 
-ADD . /usr/src/sriov-cni
+COPY . /usr/src/sriov-cni
 
 WORKDIR /usr/src/sriov-cni
 RUN make clean && \
@@ -12,6 +12,6 @@ WORKDIR /
 
 LABEL io.k8s.display-name="SR-IOV CNI"
 
-ADD ./images/entrypoint.sh /
+COPY ./images/entrypoint.sh /
 
 ENTRYPOINT ["/entrypoint.sh"]
