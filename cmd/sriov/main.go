@@ -11,9 +11,9 @@ import (
 	"github.com/containernetworking/cni/pkg/version"
 	"github.com/containernetworking/plugins/pkg/ipam"
 	"github.com/containernetworking/plugins/pkg/ns"
-	"github.com/intel/sriov-cni/pkg/config"
-	"github.com/intel/sriov-cni/pkg/sriov"
-	"github.com/intel/sriov-cni/pkg/utils"
+	"github.com/k8snetworkplumbingwg/sriov-cni/pkg/config"
+	"github.com/k8snetworkplumbingwg/sriov-cni/pkg/sriov"
+	"github.com/k8snetworkplumbingwg/sriov-cni/pkg/utils"
 	"github.com/vishvananda/netlink"
 )
 
@@ -84,29 +84,23 @@ func cmdAdd(args *skel.CmdArgs) error {
 		Sandbox: netns.Path(),
 	}}
 
-	// skip the IPAM allocation for the DPDK
-	if netConf.DPDKMode {
-		// Cache NetConf for CmdDel
-		if err = utils.SaveNetConf(args.ContainerID, config.DefaultCNIDir, args.IfName, netConf); err != nil {
-			return fmt.Errorf("error saving NetConf %q", err)
-		}
-		return result.Print()
-	}
-
-	macAddr, err = sm.SetupVF(netConf, args.IfName, args.ContainerID, netns)
-	defer func() {
-		if err != nil {
-			err := netns.Do(func(_ ns.NetNS) error {
-				_, err := netlink.LinkByName(args.IfName)
-				return err
-			})
-			if err == nil {
-				sm.ReleaseVF(netConf, args.IfName, args.ContainerID, netns)
+	if !netConf.DPDKMode {
+		macAddr, err = sm.SetupVF(netConf, args.IfName, args.ContainerID, netns)
+		defer func() {
+			if err != nil {
+				err := netns.Do(func(_ ns.NetNS) error {
+					_, err := netlink.LinkByName(args.IfName)
+					return err
+				})
+				if err == nil {
+					sm.ReleaseVF(netConf, args.IfName, args.ContainerID, netns)
+				}
 			}
+		}()
+		if err != nil {
+			return fmt.Errorf("failed to set up pod interface %q from the device %q: %v", args.IfName, netConf.Master, err)
 		}
-	}()
-	if err != nil {
-		return fmt.Errorf("failed to set up pod interface %q from the device %q: %v", args.IfName, netConf.Master, err)
+		result.Interfaces[0].Mac = macAddr
 	}
 
 	// run the IPAM plugin
@@ -133,18 +127,19 @@ func cmdAdd(args *skel.CmdArgs) error {
 		}
 
 		newResult.Interfaces = result.Interfaces
-		newResult.Interfaces[0].Mac = macAddr
 
 		for _, ipc := range newResult.IPs {
 			// All addresses apply to the container interface (move from host)
 			ipc.Interface = current.Int(0)
 		}
 
-		err = netns.Do(func(_ ns.NetNS) error {
-			return ipam.ConfigureIface(args.IfName, newResult)
-		})
-		if err != nil {
-			return err
+		if !netConf.DPDKMode {
+			err = netns.Do(func(_ ns.NetNS) error {
+				return ipam.ConfigureIface(args.IfName, newResult)
+			})
+			if err != nil {
+				return err
+			}
 		}
 		result = newResult
 	}
@@ -158,11 +153,6 @@ func cmdAdd(args *skel.CmdArgs) error {
 }
 
 func cmdDel(args *skel.CmdArgs) error {
-	// https://github.com/kubernetes/kubernetes/pull/35240
-	if args.Netns == "" {
-		return nil
-	}
-
 	netConf, cRefPath, err := config.LoadConfFromCache(args)
 	if err != nil {
 		return err
@@ -174,16 +164,21 @@ func cmdDel(args *skel.CmdArgs) error {
 		}
 	}()
 
+	if netConf.IPAM.Type != "" {
+		err = ipam.ExecDel(netConf.IPAM.Type, args.StdinData)
+		if err != nil {
+			return err
+		}
+	}
+
+	// https://github.com/kubernetes/kubernetes/pull/35240
+	if args.Netns == "" {
+		return nil
+	}
+
 	sm := sriov.NewSriovManager()
 
 	if !netConf.DPDKMode {
-		if netConf.IPAM.Type != "" {
-			err = ipam.ExecDel(netConf.IPAM.Type, args.StdinData)
-			if err != nil {
-				return err
-			}
-		}
-
 		netns, err := ns.GetNS(args.Netns)
 		if err != nil {
 			// according to:

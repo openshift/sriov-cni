@@ -1,4 +1,4 @@
-[![Build Status](https://travis-ci.org/intel/sriov-cni.svg?branch=master)](https://travis-ci.org/intel/sriov-cni) [![Go Report Card](https://goreportcard.com/badge/github.com/intel/sriov-cni)](https://goreportcard.com/report/github.com/intel/sriov-cni)
+[![Build Status](https://travis-ci.org/k8snetworkplumbingwg/sriov-cni.svg?branch=master)](https://travis-ci.org/k8snetworkplumbingwg/sriov-cni) [![Go Report Card](https://goreportcard.com/badge/github.com/k8snetworkplumbingwg/sriov-cni)](https://goreportcard.com/report/github.com/k8snetworkplumbingwg/sriov-cni) [![Weekly minutes](https://img.shields.io/badge/Weekly%20Meeting%20Minutes-Mon%203pm%20GMT-blue.svg?style=plastic)](https://docs.google.com/document/d/1sJQMHbxZdeYJPgAWK1aSt6yzZ4K_8es7woVIrwinVwI)
 
    * [SR-IOV CNI plugin](#sr-iov-cni-plugin)
       * [Build](#build)
@@ -17,11 +17,11 @@ This plugin enables the configuration and usage of SR-IOV VF networks in contain
 
 Network Interface Cards (NICs) with [SR-IOV](http://blog.scottlowe.org/2009/12/02/what-is-sr-iov/) capabilities are managed through physical functions (PFs) and virtual functions (VFs). A PF is used by the host and usually represents a single NIC port. VF configurations are applied through the PF. With SR-IOV CNI each VF can be treated as a separate network interface, assigned to a container, and configured with it's own MAC, VLAN IP and more.
 
-SR-IOV CNI plugin works with [SR-IOV device plugin](https://github.com/intel/sriov-network-device-plugin) for VF allocation in Kubernetes. A metaplugin such as [Multus](https://github.com/intel/multus-cni) gets the allocated VF's `deviceID`(PCI address) and is responsible for invoking the SR-IOV CNI plugin with that `deviceID`.
+SR-IOV CNI plugin works with [SR-IOV device plugin](https://github.com/k8snetworkplumbingwg/sriov-network-device-plugin) for VF allocation in Kubernetes. A metaplugin such as [Multus](https://github.com/intel/multus-cni) gets the allocated VF's `deviceID`(PCI address) and is responsible for invoking the SR-IOV CNI plugin with that `deviceID`.
 
 ## Build
 
-This plugin uses Go modules for dependency management and requires Go 1.12+ to build.
+This plugin uses Go modules for dependency management and requires Go 1.13+ to build.
 
 To build the plugin binary:
 
@@ -32,19 +32,19 @@ make
 Upon successful build the plugin binary will be available in `build/sriov`.
 
 ## Kubernetes Quick Start
-A full guide on orchestrating SR-IOV virtual functions in Kubernetes can be found at the [SR-IOV Device Plugin project.](https://github.com/intel/sriov-network-device-plugin#quick-start)
+A full guide on orchestrating SR-IOV virtual functions in Kubernetes can be found at the [SR-IOV Device Plugin project.](https://github.com/k8snetworkplumbingwg/sriov-network-device-plugin#quick-start)
 
-Creating VFs is outside the scope of the SR-IOV CNI plugin. [More information about allocating VFs on different NICs can be found here](https://github.com/intel/sriov-network-device-plugin/blob/master/docs/vf-setup.md)
+Creating VFs is outside the scope of the SR-IOV CNI plugin. [More information about allocating VFs on different NICs can be found here](https://github.com/k8snetworkplumbingwg/sriov-network-device-plugin/blob/master/docs/vf-setup.md)
 
 To deploy SR-IOV CNI by itself on a Kubernetes 1.16+ cluster:
 
 `kubectl apply -f images/k8s-v1.16/sriov-cni-daemonset.yaml`
 
-**Note** The above deployment is not sufficient to manage and configure SR-IOV virtual functions. [See the full orchestration guide for more information.](https://github.com/intel/sriov-network-device-plugin#sr-iov-network-device-plugin)
+**Note** The above deployment is not sufficient to manage and configure SR-IOV virtual functions. [See the full orchestration guide for more information.](https://github.com/k8snetworkplumbingwg/sriov-network-device-plugin#sr-iov-network-device-plugin)
 
 
 ## Usage
-SR-IOV CNI networks are commonly configured using Multus and SR-IOV Device Plugin using Network Attachment Definitions. More information about configuring Kubernetes networks using this pattern can be found in the [Multus configuration reference document.](https://intel.github.io/multus-cni/doc/configuration.html)
+SR-IOV CNI networks are commonly configured using Multus and SR-IOV Device Plugin using Network Attachment Definitions. More information about configuring Kubernetes networks using this pattern can be found in the [Multus configuration reference document.](https://intel.github.io/multus-cni/docs/configuration.html)
 
 A Network Attachment Definition for SR-IOV CNI takes the form:
 
@@ -128,7 +128,7 @@ This configuration sets a number of extra parameters that may be key for SR-IOV 
 
 #### DPDK userspace driver config
 
-The below config will configure a VF using a userspace driver (uio/vfio) for use in a container. If this plugin is used with a VF bound to a dpdk driver then the IPAM configuration will be ignored. Other config parameters should be applicable but implementation may be driver specific. 
+The below config will configure a VF using a userspace driver (uio/vfio) for use in a container. If this plugin is used with a VF bound to a dpdk driver then the IPAM configuration will still be respected, but it will only allocate IP address(es) using the specified IPAM plugin, not apply the IP address(es) to container interface. Other config parameters should be applicable but implementation may be driver specific.
 
 ```json
 {
@@ -138,6 +138,8 @@ The below config will configure a VF using a userspace driver (uio/vfio) for use
     "vlan": 1000
 }
 ```
+
+**Note** [DHCP](https://github.com/containernetworking/plugins/tree/master/plugins/ipam/dhcp) IPAM plugin can not be used for VF bound to a dpdk driver (uio/vfio).
 
 ### Advanced Configuration 
 
