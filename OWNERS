@@ -5,6 +5,9 @@ reviewers:
   - squeed
   - fepan
   - s1061123
+  - bn222
+  - Billy99
+  - fabrizio8
 approvers:
   - zshi-redhat
   - dougbtv
@@ -12,5 +15,8 @@ approvers:
   - squeed
   - fepan
   - s1061123
+  - bn222
+  - Billy99
+  - fabrizio8
 component: "Networking"
 subcomponent: "SR-IOV"
