@@ -1,4 +1,4 @@
-[![Build Status](https://travis-ci.org/k8snetworkplumbingwg/sriov-cni.svg?branch=master)](https://travis-ci.org/k8snetworkplumbingwg/sriov-cni) [![Go Report Card](https://goreportcard.com/badge/github.com/k8snetworkplumbingwg/sriov-cni)](https://goreportcard.com/report/github.com/k8snetworkplumbingwg/sriov-cni) [![Weekly minutes](https://img.shields.io/badge/Weekly%20Meeting%20Minutes-Mon%203pm%20GMT-blue.svg?style=plastic)](https://docs.google.com/document/d/1sJQMHbxZdeYJPgAWK1aSt6yzZ4K_8es7woVIrwinVwI)
+[![Build Status](https://travis-ci.org/k8snetworkplumbingwg/sriov-cni.svg?branch=master)](https://travis-ci.org/k8snetworkplumbingwg/sriov-cni) [![Go Report Card](https://goreportcard.com/badge/github.com/k8snetworkplumbingwg/sriov-cni)](https://goreportcard.com/report/github.com/k8snetworkplumbingwg/sriov-cni) [![Weekly minutes](https://img.shields.io/badge/Weekly%20Meeting%20Minutes-Mon%203pm%20GMT-blue.svg?style=plastic)](https://docs.google.com/document/d/1sJQMHbxZdeYJPgAWK1aSt6yzZ4K_8es7woVIrwinVwI) [![Coverage Status](https://coveralls.io/repos/github/k8snetworkplumbingwg/sriov-cni/badge.svg?branch=master)](https://coveralls.io/github/k8snetworkplumbingwg/sriov-cni?branch=master)
 
    * [SR-IOV CNI plugin](#sr-iov-cni-plugin)
       * [Build](#build)
@@ -21,7 +21,7 @@ SR-IOV CNI plugin works with [SR-IOV device plugin](https://github.com/k8snetwor
 
 ## Build
 
-This plugin uses Go modules for dependency management and requires Go 1.13+ to build.
+This plugin uses Go modules for dependency management and requires Go 1.17+ to build.
 
 To build the plugin binary:
 
