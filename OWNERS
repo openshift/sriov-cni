@@ -1,5 +1,6 @@
 reviewers:
   - zshi-redhat
+  - bn222
   - dougbtv
   - dcbw
   - squeed
@@ -7,6 +8,7 @@ reviewers:
   - s1061123
 approvers:
   - zshi-redhat
+  - bn222
   - dougbtv
   - dcbw
   - squeed
