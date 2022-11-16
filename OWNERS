@@ -1,16 +1,20 @@
 reviewers:
   - zshi-redhat
+  - bn222
   - dougbtv
   - dcbw
   - squeed
   - fepan
   - s1061123
+  - wizhaoredhat
 approvers:
   - zshi-redhat
+  - bn222
   - dougbtv
   - dcbw
   - squeed
   - fepan
   - s1061123
+  - wizhaoredhat
 component: "Networking"
 subcomponent: "SR-IOV"
