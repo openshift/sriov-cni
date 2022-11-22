@@ -205,6 +205,14 @@ func cmdDel(args *skel.CmdArgs) error {
 
 	sm := sriov.NewSriovManager()
 
+	/* ResetVFConfig resets a VF administratively. We must run ResetVFConfig
+	   before ReleaseVF because some drivers will error out if we try to
+	   reset netdev VF with trust off. So, reset VF MAC address via PF first.
+	*/
+	if err := sm.ResetVFConfig(netConf); err != nil {
+		return fmt.Errorf("cmdDel() error reseting VF: %q", err)
+	}
+
 	if !netConf.DPDKMode {
 		netns, err := ns.GetNS(args.Netns)
 		if err != nil {
@@ -225,10 +233,6 @@ func cmdDel(args *skel.CmdArgs) error {
 		if err = sm.ReleaseVF(netConf, args.IfName, args.ContainerID, netns); err != nil {
 			return err
 		}
-	}
-
-	if err := sm.ResetVFConfig(netConf); err != nil {
-		return fmt.Errorf("cmdDel() error reseting VF: %q", err)
 	}
 
 	return nil
