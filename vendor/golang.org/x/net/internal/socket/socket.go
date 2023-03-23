@@ -9,11 +9,8 @@ package socket // import "golang.org/x/net/internal/socket"
 import (
 	"errors"
 	"net"
-	"runtime"
 	"unsafe"
 )
-
-var errNotImplemented = errors.New("not implemented on " + runtime.GOOS + "/" + runtime.GOARCH)
 
 // An Option represents a sticky socket option.
 type Option struct {
@@ -90,9 +87,17 @@ func (o *Option) SetInt(c *Conn, v int) error {
 	return o.set(c, b)
 }
 
+func controlHeaderLen() int {
+	return roundup(sizeofCmsghdr)
+}
+
+func controlMessageLen(dataLen int) int {
+	return roundup(sizeofCmsghdr) + dataLen
+}
+
 // ControlMessageSpace returns the whole length of control message.
 func ControlMessageSpace(dataLen int) int {
-	return controlMessageSpace(dataLen)
+	return roundup(sizeofCmsghdr) + roundup(dataLen)
 }
 
 // A ControlMessage represents the head message in a stream of control
