@@ -61,8 +61,8 @@ github.com/safchain/ethtool
 # github.com/stretchr/objx v0.1.0
 ## explicit
 github.com/stretchr/objx
-# github.com/stretchr/testify v1.4.0
-## explicit
+# github.com/stretchr/testify v1.6.1
+## explicit; go 1.13
 github.com/stretchr/testify/assert
 github.com/stretchr/testify/mock
 # github.com/vishvananda/netlink v1.0.1-0.20190924205540-07ace697bea4
@@ -85,6 +85,6 @@ golang.org/x/net/ipv6
 golang.org/x/sys/internal/unsafeheader
 golang.org/x/sys/unix
 golang.org/x/sys/windows
-# gopkg.in/yaml.v2 v2.2.2
+# gopkg.in/yaml.v3 v3.0.0-20200313102051-9f266ea9e77c
 ## explicit
-gopkg.in/yaml.v2
+gopkg.in/yaml.v3

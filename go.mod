@@ -7,7 +7,7 @@ require (
 	github.com/containernetworking/plugins v0.8.7
 	github.com/onsi/ginkgo v1.2.1-0.20151202141238-7f8ab55aaf3b
 	github.com/onsi/gomega v0.0.0-20151007035656-2152b45fa28a
-	github.com/stretchr/testify v1.4.0
+	github.com/stretchr/testify v1.6.1
 	github.com/vishvananda/netlink v1.0.1-0.20190924205540-07ace697bea4
 	golang.org/x/net v0.0.0-20220802222814-0bcc04d9c69b
 )
@@ -20,5 +20,5 @@ require (
 	github.com/stretchr/objx v0.1.0 // indirect
 	github.com/vishvananda/netns v0.0.0-20180720170159-13995c7128cc // indirect
 	golang.org/x/sys v0.0.0-20220728004956-3c1f35247d10 // indirect
-	gopkg.in/yaml.v2 v2.2.2 // indirect
+	gopkg.in/yaml.v3 v3.0.0-20200313102051-9f266ea9e77c // indirect
 )
