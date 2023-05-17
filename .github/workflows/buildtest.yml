@@ -28,7 +28,7 @@ jobs:
         run: GOARCH="${TARGET}" go build ./cmd/sriov/...
 
       - name: Go test
-        run: sudo go test ./... # sudo needed for netns change in test
+        run: sudo go test -race ./... # sudo needed for netns change in test
 
   coverage:
     runs-on: ubuntu-latest
