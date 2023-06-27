@@ -1,12 +1,16 @@
-FROM registry.svc.ci.openshift.org/ocp/builder:golang-1.10 AS builder
+FROM arm64v8/golang:alpine as builder
 
 COPY . /usr/src/sriov-cni
 
+ENV HTTP_PROXY $http_proxy
+ENV HTTPS_PROXY $https_proxy
+
 WORKDIR /usr/src/sriov-cni
-RUN make clean && \
+RUN apk add --no-cache --virtual build-dependencies build-base=~0.5 && \
+    make clean && \
     make build
 
-FROM registry.svc.ci.openshift.org/ocp/4.0:base
+FROM arm64v8/alpine
 COPY --from=builder /usr/src/sriov-cni/build/sriov /usr/bin/
 WORKDIR /
 

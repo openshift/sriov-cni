@@ -1,5 +1,5 @@
 ---
-apiVersion: extensions/v1beta1
+apiVersion: apps/v1
 kind: DaemonSet
 metadata:
   name: kube-sriov-cni-ds-amd64
@@ -8,14 +8,18 @@ metadata:
     tier: node
     app: sriov-cni
 spec:
+  selector:
+    matchLabels:
+      name: sriov-cni
   template:
     metadata:
       labels:
+        name: sriov-cni
         tier: node
         app: sriov-cni
     spec:
       nodeSelector:
-        beta.kubernetes.io/arch: amd64
+        kubernetes.io/arch: amd64
       tolerations:
       - key: node-role.kubernetes.io/master
         operator: Exists

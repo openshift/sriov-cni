@@ -38,13 +38,13 @@ Creating VFs is outside the scope of the SR-IOV CNI plugin. [More information ab
 
 To deploy SR-IOV CNI by itself on a Kubernetes 1.16+ cluster:
 
-`kubectl apply -f images/k8s-v1.16/sriov-cni-daemonset.yaml`
+`kubectl apply -f images/sriov-cni-daemonset.yaml`
 
 **Note** The above deployment is not sufficient to manage and configure SR-IOV virtual functions. [See the full orchestration guide for more information.](https://github.com/k8snetworkplumbingwg/sriov-network-device-plugin#sr-iov-network-device-plugin)
 
 
 ## Usage
-SR-IOV CNI networks are commonly configured using Multus and SR-IOV Device Plugin using Network Attachment Definitions. More information about configuring Kubernetes networks using this pattern can be found in the [Multus configuration reference document.](https://intel.github.io/multus-cni/docs/configuration.html)
+SR-IOV CNI networks are commonly configured using Multus and SR-IOV Device Plugin using Network Attachment Definitions. More information about configuring Kubernetes networks using this pattern can be found in the [Multus configuration reference document.](https://github.com/k8snetworkplumbingwg/multus-cni/blob/master/docs/configuration.md)
 
 A Network Attachment Definition for SR-IOV CNI takes the form:
 
@@ -105,7 +105,7 @@ This is the minimum configuration for a working kernel driver interface using an
 ```
 
 #### Extended kernel driver config
-This configuration sets a number of extra parameters that may be key for SR-IOV networks including a vlan tag, disabled spoof checking and enabled trust mode. These parameters are commonly set in more advanced SR-IOV VF based networks.
+This configuration sets a number of extra parameters that may be key for SR-IOV networks including a vlan tag, disabled spoof checking, enabled allmulticast mode and enabled trust mode. These parameters are commonly set in more advanced SR-IOV VF based networks.
 
 ```json
 {
@@ -115,6 +115,7 @@ This configuration sets a number of extra parameters that may be key for SR-IOV 
   "vlan": 1000,
   "spoofchk": "off",
   "trust": "on",
+  "all_multicast": "on",
   "ipam": {
     "type": "host-local",
     "subnet": "10.56.217.0/24",

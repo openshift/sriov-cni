@@ -33,7 +33,6 @@ endif
 
 # Go tools
 GO      = go
-GODOC   = godoc
 GOFMT   = gofmt
 TIMEOUT = 15
 V ?= 0
@@ -56,14 +55,14 @@ build: $(BUILDDIR)/$(BINARY_NAME) ; $(info Building $(BINARY_NAME)...) @ ## Buil
 	$(info Done!)
 
 $(BUILDDIR)/$(BINARY_NAME): $(GOFILES) | $(BUILDDIR)
-	@cd $(BASE)/cmd/$(BINARY_NAME) && CGO_ENABLED=0 $(GO) build -o $(BUILDDIR)/$(BINARY_NAME) -v
+	@cd $(BASE)/cmd/$(BINARY_NAME) && CGO_ENABLED=0 $(GO) build -o $(BUILDDIR)/$(BINARY_NAME) -tags no_openssl -v
 
 
 # Tools
 
 GOLANGCILINT = $(GOBIN)/golangci-lint
 $(GOLANGCILINT): | $(BASE) ; $(info  Installing golangci-lint...)
-	$Q go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.45
+	$Q go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.52.2
 
 GOCOVMERGE = $(GOBIN)/gocovmerge
 $(GOCOVMERGE): | $(BASE) ; $(info  Building gocovmerge...)
