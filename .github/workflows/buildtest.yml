@@ -6,39 +6,44 @@ on:
     schedule:
       - cron: "0 8 * * 0" # every sunday
 jobs:
-  build:
+  build-test:
     strategy:
       matrix:
-        go-version: [1.19.x]
+        go-version: [1.20.x]
         os: [ubuntu-latest]
+        goos: [linux]
+        goarch: [amd64, arm64, ppc64le]
     runs-on: ${{ matrix.os }}
     env:
       GO111MODULE: on
-      TARGET: amd64
     steps:
       - name: Set up Go
-        uses: actions/setup-go@v3
+        uses: actions/setup-go@v4
         with:
           go-version: ${{ matrix.go-version }}
 
       - name: Check out code into the Go module directory
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
 
-      - name: Build
+      - name: Build test for ${{ matrix.goarch }}
+        env:
+          GOARCH: ${{ matrix.goarch }}
+          GOOS: ${{ matrix.goos }}
         run: GOARCH="${TARGET}" go build ./cmd/sriov/...
 
       - name: Go test
-        run: sudo go test ./... # sudo needed for netns change in test
+        if: ${{ matrix.goarch }} == "amd64"
+        run: sudo go test -race ./... # sudo needed for netns change in test
 
   coverage:
     runs-on: ubuntu-latest
-    needs: build
+    needs: build-test
     name: coverage
     steps:
       - name: Set up Go
-        uses: actions/setup-go@v1
+        uses: actions/setup-go@v4
         with:
-          go-version: 1.19.x
+          go-version: 1.20.x
 
       - name: Check out code into the Go module directory
         uses: actions/checkout@v2
@@ -47,7 +52,7 @@ jobs:
         run: sudo make test-coverage # sudo needed for netns change in test
       
       - name: Coveralls
-        uses: coverallsapp/github-action@1.1.3
+        uses: coverallsapp/github-action@v2
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          path-to-lcov: test/coverage/lcov.info
+          file: test/coverage/lcov.info

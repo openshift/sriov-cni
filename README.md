@@ -38,13 +38,13 @@ Creating VFs is outside the scope of the SR-IOV CNI plugin. [More information ab
 
 To deploy SR-IOV CNI by itself on a Kubernetes 1.16+ cluster:
 
-`kubectl apply -f images/k8s-v1.16/sriov-cni-daemonset.yaml`
+`kubectl apply -f images/sriov-cni-daemonset.yaml`
 
 **Note** The above deployment is not sufficient to manage and configure SR-IOV virtual functions. [See the full orchestration guide for more information.](https://github.com/k8snetworkplumbingwg/sriov-network-device-plugin#sr-iov-network-device-plugin)
 
 
 ## Usage
-SR-IOV CNI networks are commonly configured using Multus and SR-IOV Device Plugin using Network Attachment Definitions. More information about configuring Kubernetes networks using this pattern can be found in the [Multus configuration reference document.](https://intel.github.io/multus-cni/docs/configuration.html)
+SR-IOV CNI networks are commonly configured using Multus and SR-IOV Device Plugin using Network Attachment Definitions. More information about configuring Kubernetes networks using this pattern can be found in the [Multus configuration reference document.](https://github.com/k8snetworkplumbingwg/multus-cni/blob/master/docs/configuration.md)
 
 A Network Attachment Definition for SR-IOV CNI takes the form:
 

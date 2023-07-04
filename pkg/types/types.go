@@ -9,6 +9,7 @@ import (
 type VfState struct {
 	HostIFName   string
 	SpoofChk     bool
+	Trust        bool
 	AdminMAC     string
 	EffectiveMAC string
 	Vlan         int
@@ -27,13 +28,14 @@ func (vs *VfState) FillFromVfInfo(info *netlink.VfInfo) {
 	vs.Vlan = info.Vlan
 	vs.VlanQoS = info.Qos
 	vs.SpoofChk = info.Spoofchk
+	vs.Trust = info.Trust != 0
 }
 
 // NetConf extends types.NetConf for sriov-cni
 type NetConf struct {
 	types.NetConf
 	OrigVfState   VfState // Stores the original VF state as it was prior to any operations done during cmdAdd flow
-	DPDKMode      bool
+	DPDKMode      bool    `json:"-"`
 	Master        string
 	MAC           string
 	Vlan          *int   `json:"vlan"`

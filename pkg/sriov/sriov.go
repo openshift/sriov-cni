@@ -2,9 +2,6 @@ package sriov
 
 import (
 	"fmt"
-	"net"
-	"time"
-
 	"github.com/containernetworking/plugins/pkg/ns"
 
 	sriovtypes "github.com/k8snetworkplumbingwg/sriov-cni/pkg/types"
@@ -39,8 +36,8 @@ func (p *pciUtilsImpl) EnableArpAndNdiscNotify(ifName string) error {
 
 // Manager provides interface invoke sriov nic related operations
 type Manager interface {
-	SetupVF(conf *sriovtypes.NetConf, podifName string, cid string, netns ns.NetNS) (string, error)
-	ReleaseVF(conf *sriovtypes.NetConf, podifName string, cid string, netns ns.NetNS) error
+	SetupVF(conf *sriovtypes.NetConf, podifName string, netns ns.NetNS) error
+	ReleaseVF(conf *sriovtypes.NetConf, podifName string, netns ns.NetNS) error
 	ResetVFConfig(conf *sriovtypes.NetConf) error
 	ApplyVFConfig(conf *sriovtypes.NetConf) error
 	FillOriginalVfInfo(conf *sriovtypes.NetConf) error
@@ -60,12 +57,12 @@ func NewSriovManager() Manager {
 }
 
 // SetupVF sets up a VF in Pod netns
-func (s *sriovManager) SetupVF(conf *sriovtypes.NetConf, podifName string, cid string, netns ns.NetNS) (string, error) {
+func (s *sriovManager) SetupVF(conf *sriovtypes.NetConf, podifName string, netns ns.NetNS) error {
 	linkName := conf.OrigVfState.HostIFName
 
 	linkObj, err := s.nLink.LinkByName(linkName)
 	if err != nil {
-		return "", fmt.Errorf("error getting VF netdevice with name %s", linkName)
+		return fmt.Errorf("error getting VF netdevice with name %s", linkName)
 	}
 
 	// tempName used as intermediary name to avoid name conflicts
@@ -73,47 +70,27 @@ func (s *sriovManager) SetupVF(conf *sriovtypes.NetConf, podifName string, cid s
 
 	// 1. Set link down
 	if err := s.nLink.LinkSetDown(linkObj); err != nil {
-		return "", fmt.Errorf("failed to down vf device %q: %v", linkName, err)
+		return fmt.Errorf("failed to down vf device %q: %v", linkName, err)
 	}
 
 	// 2. Set temp name
 	if err := s.nLink.LinkSetName(linkObj, tempName); err != nil {
-		return "", fmt.Errorf("error setting temp IF name %s for %s", tempName, linkName)
+		return fmt.Errorf("error setting temp IF name %s for %s", tempName, linkName)
 	}
 
-	macAddress := linkObj.Attrs().HardwareAddr.String()
+	// Save the original effective MAC address before overriding it
+	conf.OrigVfState.EffectiveMAC = linkObj.Attrs().HardwareAddr.String()
 	// 3. Set MAC address
 	if conf.MAC != "" {
-		hwaddr, err := net.ParseMAC(conf.MAC)
+		err = utils.SetVFEffectiveMAC(s.nLink, tempName, conf.MAC)
 		if err != nil {
-			return "", fmt.Errorf("failed to parse MAC address %s: %v", conf.MAC, err)
+			return fmt.Errorf("failed to set netlink MAC address to %s: %v", conf.MAC, err)
 		}
-
-		// Save the original effective MAC address before overriding it
-		conf.OrigVfState.EffectiveMAC = linkObj.Attrs().HardwareAddr.String()
-
-		/* Some NIC drivers (i.e. i40e/iavf) set VF MAC address asynchronously
-		   via PF. This means that while the PF could already show the VF with
-		   the desired MAC address, the netdev VF may still have the original
-		   one. If in this window we issue a netdev VF MAC address set, the driver
-		   will return an error and the pod will fail to create.
-		   Other NICs (Mellanox) require explicit netdev VF MAC address so we
-		   cannot skip this part.
-		   Retry up to 5 times; wait 200 milliseconds between retries
-		*/
-		err = utils.Retry(5, 200*time.Millisecond, func() error {
-			return s.nLink.LinkSetHardwareAddr(linkObj, hwaddr)
-		})
-
-		if err != nil {
-			return "", fmt.Errorf("failed to set netlink MAC address to %s: %v", hwaddr, err)
-		}
-		macAddress = conf.MAC
 	}
 
 	// 4. Change netns
 	if err := s.nLink.LinkSetNsFd(linkObj, int(netns.Fd())); err != nil {
-		return "", fmt.Errorf("failed to move IF %s to netns: %q", tempName, err)
+		return fmt.Errorf("failed to move IF %s to netns: %q", tempName, err)
 	}
 
 	if err := netns.Do(func(_ ns.NetNS) error {
@@ -133,15 +110,15 @@ func (s *sriovManager) SetupVF(conf *sriovtypes.NetConf, podifName string, cid s
 
 		return nil
 	}); err != nil {
-		return "", fmt.Errorf("error setting up interface in container namespace: %q", err)
+		return fmt.Errorf("error setting up interface in container namespace: %q", err)
 	}
 	conf.ContIFNames = podifName
 
-	return macAddress, nil
+	return nil
 }
 
 // ReleaseVF reset a VF from Pod netns and return it to init netns
-func (s *sriovManager) ReleaseVF(conf *sriovtypes.NetConf, podifName string, cid string, netns ns.NetNS) error {
+func (s *sriovManager) ReleaseVF(conf *sriovtypes.NetConf, podifName string, netns ns.NetNS) error {
 	initns, err := ns.GetCurrentNS()
 	if err != nil {
 		return fmt.Errorf("failed to get init netns: %v", err)
@@ -169,15 +146,11 @@ func (s *sriovManager) ReleaseVF(conf *sriovtypes.NetConf, podifName string, cid
 			return fmt.Errorf("failed to rename link %s to host name %s: %q", podifName, conf.OrigVfState.HostIFName, err)
 		}
 
-		// reset effective MAC address
 		if conf.MAC != "" {
-			hwaddr, err := net.ParseMAC(conf.OrigVfState.EffectiveMAC)
+			// reset effective MAC address
+			err = utils.SetVFEffectiveMAC(s.nLink, conf.OrigVfState.HostIFName, conf.OrigVfState.EffectiveMAC)
 			if err != nil {
-				return fmt.Errorf("failed to parse original effective MAC address %s: %v", conf.OrigVfState.EffectiveMAC, err)
-			}
-
-			if err = s.nLink.LinkSetHardwareAddr(linkObj, hwaddr); err != nil {
-				return fmt.Errorf("failed to restore original effective netlink MAC address %s: %v", hwaddr, err)
+				return fmt.Errorf("failed to restore original effective netlink MAC address %s: %v", conf.OrigVfState.EffectiveMAC, err)
 			}
 		}
 
@@ -226,13 +199,9 @@ func (s *sriovManager) ApplyVFConfig(conf *sriovtypes.NetConf) error {
 
 	// 2. Set mac address
 	if conf.MAC != "" {
-		hwaddr, err := net.ParseMAC(conf.MAC)
-		if err != nil {
-			return fmt.Errorf("failed to parse MAC address %s: %v", conf.MAC, err)
-		}
-
-		if err = s.nLink.LinkSetVfHardwareAddr(pfLink, conf.VFID, hwaddr); err != nil {
-			return fmt.Errorf("failed to set MAC address to %s: %v", hwaddr, err)
+		// when we restore the original hardware mac address we may get a device or resource busy. so we introduce retry
+		if err := utils.SetVFHardwareMAC(s.nLink, conf.Master, conf.VFID, conf.MAC); err != nil {
+			return fmt.Errorf("failed to set MAC address to %s: %v", conf.MAC, err)
 		}
 	}
 
@@ -312,6 +281,7 @@ func (s *sriovManager) FillOriginalVfInfo(conf *sriovtypes.NetConf) error {
 		return fmt.Errorf("failed to find vf %d", conf.VFID)
 	}
 	conf.OrigVfState.FillFromVfInfo(vfState)
+
 	return err
 }
 
@@ -342,34 +312,16 @@ func (s *sriovManager) ResetVFConfig(conf *sriovtypes.NetConf) error {
 
 	// Restore the original administrative MAC address
 	if conf.MAC != "" {
-		hwaddr, err := net.ParseMAC(conf.OrigVfState.AdminMAC)
-		if err != nil {
-			return fmt.Errorf("failed to parse original administrative MAC address %s: %v", conf.OrigVfState.AdminMAC, err)
-		}
-
-		/* Some NIC drivers (i.e. i40e/iavf) set VF MAC address asynchronously
-		   via PF. This means that while the PF could already show the VF with
-		   the desired MAC address, the netdev VF may still have the original
-		   one. If in this window we issue a netdev VF MAC address set, the driver
-		   will return an error and the pod will fail to create.
-		   Other NICs (Mellanox) require explicit netdev VF MAC address so we
-		   cannot skip this part.
-		   Retry up to 5 times; wait 200 milliseconds between retries
-		*/
-		err = utils.Retry(5, 200*time.Millisecond, func() error {
-			return s.nLink.LinkSetVfHardwareAddr(pfLink, conf.VFID, hwaddr)
-		})
-		if err != nil {
-			return fmt.Errorf("failed to restore original administrative MAC address %s: %v", hwaddr, err)
+		// when we restore the original hardware mac address we may get a device or resource busy. so we introduce retry
+		if err := utils.SetVFHardwareMAC(s.nLink, conf.Master, conf.VFID, conf.OrigVfState.AdminMAC); err != nil {
+			return fmt.Errorf("failed to restore original administrative MAC address %s: %v", conf.OrigVfState.AdminMAC, err)
 		}
 	}
 
 	// Restore VF trust
 	if conf.Trust != "" {
-		// TODO: netlink go implementation does not support getting VF trust, need to add support there first
-		// for now, just set VF trust to off if it was specified by the user in netconf
-		if err = s.nLink.LinkSetVfTrust(pfLink, conf.VFID, false); err != nil {
-			return fmt.Errorf("failed to disable trust for vf %d: %v", conf.VFID, err)
+		if err = s.nLink.LinkSetVfTrust(pfLink, conf.VFID, conf.OrigVfState.Trust); err != nil {
+			return fmt.Errorf("failed to set trust for vf %d: %v", conf.VFID, err)
 		}
 	}
 
