@@ -9,6 +9,8 @@ reviewers:
   - Billy99
   - fabrizio8
   - wizhaoredhat
+  - SchSeba
+  - zeeke
 approvers:
   - zshi-redhat
   - dougbtv
@@ -20,5 +22,7 @@ approvers:
   - Billy99
   - fabrizio8
   - wizhaoredhat
+  - SchSeba
+  - zeeke
 component: "Networking"
 subcomponent: "SR-IOV"
