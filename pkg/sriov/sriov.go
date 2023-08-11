@@ -183,20 +183,13 @@ func (s *sriovManager) ApplyVFConfig(conf *sriovtypes.NetConf) error {
 		return fmt.Errorf("failed to lookup master %q: %v", conf.Master, err)
 	}
 	// 1. Set vlan
-	if conf.Vlan == nil {
-		vlan := new(int)
-		*vlan = 0
-		conf.Vlan = vlan
-	}
-	// set vlan qos if present in the config
-	if conf.VlanQoS != nil {
-		if err = s.nLink.LinkSetVfVlanQos(pfLink, conf.VFID, *conf.Vlan, *conf.VlanQoS); err != nil {
-			return fmt.Errorf("failed to set vf %d vlan configuration: %v", conf.VFID, err)
+	if conf.VlanProto != nil {
+		if err = s.nLink.LinkSetVfVlanQosProto(pfLink, conf.VFID, *conf.Vlan, *conf.VlanQoS, sriovtypes.VlanProtoInt[*conf.VlanProto]); err != nil {
+			return fmt.Errorf("failed to set vf %d vlan configuration - id %d, qos %d and proto %s: %v", conf.VFID, *conf.Vlan, *conf.VlanQoS, *conf.VlanProto, err)
 		}
 	} else {
-		// set vlan id field only
-		if err = s.nLink.LinkSetVfVlan(pfLink, conf.VFID, *conf.Vlan); err != nil {
-			return fmt.Errorf("failed to set vf %d vlan: %v", conf.VFID, err)
+		if err = s.nLink.LinkSetVfVlanQos(pfLink, conf.VFID, *conf.Vlan, *conf.VlanQoS); err != nil {
+			return fmt.Errorf("failed to set vf %d vlan configuration - id %d and qos %d: %v", conf.VFID, *conf.Vlan, *conf.VlanQoS, err)
 		}
 	}
 
@@ -294,14 +287,13 @@ func (s *sriovManager) ResetVFConfig(conf *sriovtypes.NetConf) error {
 		return fmt.Errorf("failed to lookup master %q: %v", conf.Master, err)
 	}
 
-	// Restore VLAN
-	if conf.Vlan != nil {
-		if conf.VlanQoS != nil {
-			if err = s.nLink.LinkSetVfVlanQos(pfLink, conf.VFID, conf.OrigVfState.Vlan, conf.OrigVfState.VlanQoS); err != nil {
-				return fmt.Errorf("failed to restore vf %d vlan: %v", conf.VFID, err)
-			}
-		} else if err = s.nLink.LinkSetVfVlan(pfLink, conf.VFID, conf.OrigVfState.Vlan); err != nil {
-			return fmt.Errorf("failed to restore vf %d vlan: %v", conf.VFID, err)
+	if conf.OrigVfState.VlanProto != 0 {
+		if err = s.nLink.LinkSetVfVlanQosProto(pfLink, conf.VFID, conf.OrigVfState.Vlan, conf.OrigVfState.VlanQoS, conf.OrigVfState.VlanProto); err != nil {
+			return fmt.Errorf("failed to set vf %d vlan configuration - id %d, qos %d and proto %d: %v", conf.VFID, conf.OrigVfState.Vlan, conf.OrigVfState.VlanQoS, conf.OrigVfState.VlanProto, err)
+		}
+	} else {
+		if err = s.nLink.LinkSetVfVlanQos(pfLink, conf.VFID, conf.OrigVfState.Vlan, conf.OrigVfState.VlanQoS); err != nil {
+			return fmt.Errorf("failed to set vf %d vlan configuration - id %d and qos %d: %v", conf.VFID, conf.OrigVfState.Vlan, conf.OrigVfState.VlanQoS, err)
 		}
 	}
 

@@ -209,7 +209,7 @@ var _ = Describe("Sriov", func() {
 			mocked.On("LinkSetName", fakeLink, netconf.OrigVfState.HostIFName).Return(nil)
 			mocked.On("LinkSetNsFd", fakeLink, mock.AnythingOfType("int")).Return(nil)
 			sm := sriovManager{nLink: mocked}
-			err = sm.ReleaseVF(netconf, podifName, targetNetNS)
+			err = sm.ReleaseVF(netconf, podifName, contID, targetNetNS)
 			Expect(err).NotTo(HaveOccurred())
 			mocked.AssertExpectations(t)
 		})

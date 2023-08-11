@@ -5,6 +5,13 @@ import (
 	"github.com/vishvananda/netlink"
 )
 
+const (
+	Proto8021q  = "802.1q"
+	Proto8021ad = "802.1ad"
+)
+
+var VlanProtoInt = map[string]int{Proto8021q: 33024, Proto8021ad: 34984}
+
 // VfState represents the state of the VF
 type VfState struct {
 	HostIFName   string
@@ -13,6 +20,7 @@ type VfState struct {
 	EffectiveMAC string
 	Vlan         int
 	VlanQoS      int
+	VlanProto    int
 	MinTxRate    int
 	MaxTxRate    int
 	LinkState    uint32
@@ -26,6 +34,7 @@ func (vs *VfState) FillFromVfInfo(info *netlink.VfInfo) {
 	vs.MinTxRate = int(info.MinTxRate)
 	vs.Vlan = info.Vlan
 	vs.VlanQoS = info.Qos
+	vs.VlanProto = info.VlanProto
 	vs.SpoofChk = info.Spoofchk
 }
 
@@ -36,9 +45,10 @@ type NetConf struct {
 	DPDKMode      bool
 	Master        string
 	MAC           string
-	Vlan          *int   `json:"vlan"`
-	VlanQoS       *int   `json:"vlanQoS"`
-	DeviceID      string `json:"deviceID"` // PCI address of a VF in valid sysfs format
+	Vlan          *int    `json:"vlan"`
+	VlanQoS       *int    `json:"vlanQoS"`
+	VlanProto     *string `json:"vlanProto"` // 802.1ad|802.1q
+	DeviceID      string  `json:"deviceID"`  // PCI address of a VF in valid sysfs format
 	VFID          int
 	ContIFNames   string // VF names after in the container; used during deletion
 	MinTxRate     *int   `json:"min_tx_rate"`          // Mbps, 0 = disable rate limiting

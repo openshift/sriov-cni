@@ -20,6 +20,10 @@ func (_m *NetlinkManager) LinkByName(_a0 string) (netlink.Link, error) {
 	ret := _m.Called(_a0)
 
 	var r0 netlink.Link
+	var r1 error
+	if rf, ok := ret.Get(0).(func(string) (netlink.Link, error)); ok {
+		return rf(_a0)
+	}
 	if rf, ok := ret.Get(0).(func(string) netlink.Link); ok {
 		r0 = rf(_a0)
 	} else {
@@ -28,7 +32,6 @@ func (_m *NetlinkManager) LinkByName(_a0 string) (netlink.Link, error) {
 		}
 	}
 
-	var r1 error
 	if rf, ok := ret.Get(1).(func(string) error); ok {
 		r1 = rf(_a0)
 	} else {
@@ -199,6 +202,20 @@ func (_m *NetlinkManager) LinkSetVfVlanQos(_a0 netlink.Link, _a1 int, _a2 int, _
 	var r0 error
 	if rf, ok := ret.Get(0).(func(netlink.Link, int, int, int) error); ok {
 		r0 = rf(_a0, _a1, _a2, _a3)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
+// LinkSetVfVlanQosProto provides a mock function with given fields: _a0, _a1, _a2, _a3, _a4
+func (_m *NetlinkManager) LinkSetVfVlanQosProto(_a0 netlink.Link, _a1 int, _a2 int, _a3 int, _a4 int) error {
+	ret := _m.Called(_a0, _a1, _a2, _a3, _a4)
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(netlink.Link, int, int, int, int) error); ok {
+		r0 = rf(_a0, _a1, _a2, _a3, _a4)
 	} else {
 		r0 = ret.Error(0)
 	}

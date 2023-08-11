@@ -60,6 +60,7 @@ type VfInfo struct {
 	Mac       net.HardwareAddr
 	Vlan      int
 	Qos       int
+	VlanProto int
 	TxRate    int // IFLA_VF_TX_RATE  Max TxRate
 	Spoofchk  bool
 	LinkState uint32
