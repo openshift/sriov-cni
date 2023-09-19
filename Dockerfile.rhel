@@ -1,4 +1,4 @@
-FROM registry.ci.openshift.org/ocp/builder:rhel-9-golang-1.20-openshift-4.14 AS builder
+FROM registry.ci.openshift.org/ocp/builder:rhel-9-golang-1.20-openshift-4.15 AS builder
 
 COPY . /usr/src/sriov-cni
 
@@ -6,7 +6,7 @@ WORKDIR /usr/src/sriov-cni
 RUN make clean && \
     make build
 
-FROM registry.ci.openshift.org/ocp/4.14:base-rhel9
+FROM registry.ci.openshift.org/ocp/4.15:base-rhel9
 COPY --from=builder /usr/src/sriov-cni/build/sriov /usr/bin/
 WORKDIR /
 
