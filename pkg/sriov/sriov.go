@@ -2,6 +2,7 @@ package sriov
 
 import (
 	"fmt"
+
 	"github.com/containernetworking/plugins/pkg/ns"
 
 	sriovtypes "github.com/k8snetworkplumbingwg/sriov-cni/pkg/types"
@@ -80,13 +81,6 @@ func (s *sriovManager) SetupVF(conf *sriovtypes.NetConf, podifName string, netns
 
 	// Save the original effective MAC address before overriding it
 	conf.OrigVfState.EffectiveMAC = linkObj.Attrs().HardwareAddr.String()
-	// 3. Set MAC address
-	if conf.MAC != "" {
-		err = utils.SetVFEffectiveMAC(s.nLink, tempName, conf.MAC)
-		if err != nil {
-			return fmt.Errorf("failed to set netlink MAC address to %s: %v", conf.MAC, err)
-		}
-	}
 
 	// 4. Change netns
 	if err := s.nLink.LinkSetNsFd(linkObj, int(netns.Fd())); err != nil {
@@ -102,6 +96,13 @@ func (s *sriovManager) SetupVF(conf *sriovtypes.NetConf, podifName string, netns
 		// 6. Enable IPv4 ARP notify and IPv6 Network Discovery notify
 		// Error is ignored here because enabling this feature is only a performance enhancement.
 		_ = s.utils.EnableArpAndNdiscNotify(podifName)
+
+		if conf.MAC != "" {
+			err = utils.SetVFEffectiveMAC(s.nLink, podifName, conf.MAC)
+			if err != nil {
+				return fmt.Errorf("failed to set netlink MAC address to %s: %v", conf.MAC, err)
+			}
+		}
 
 		// 7. Bring IF up in Pod netns
 		if err := s.nLink.LinkSetUp(linkObj); err != nil {
