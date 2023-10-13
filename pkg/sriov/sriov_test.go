@@ -1,8 +1,9 @@
 package sriov
 
 import (
-	"github.com/k8snetworkplumbingwg/sriov-cni/pkg/utils"
 	"net"
+
+	"github.com/k8snetworkplumbingwg/sriov-cni/pkg/utils"
 
 	"github.com/containernetworking/plugins/pkg/ns"
 	"github.com/containernetworking/plugins/pkg/testutils"
@@ -100,17 +101,17 @@ var _ = Describe("Sriov", func() {
 				HardwareAddr: fakeMac,
 			}}
 
-			tempLink := &utils.FakeLink{LinkAttrs: netlink.LinkAttrs{
+			net1Link := &utils.FakeLink{LinkAttrs: netlink.LinkAttrs{
 				Index:        1000,
-				Name:         "temp_1000",
+				Name:         "net1",
 				HardwareAddr: expMac,
 			}}
 
 			mocked.On("LinkByName", "enp175s6").Return(fakeLink, nil)
-			mocked.On("LinkByName", "temp_1000").Return(tempLink, nil)
+			mocked.On("LinkByName", "net1").Return(net1Link, nil)
 			mocked.On("LinkSetDown", fakeLink).Return(nil)
 			mocked.On("LinkSetName", fakeLink, mock.Anything).Return(nil)
-			mocked.On("LinkSetHardwareAddr", tempLink, expMac).Return(nil)
+			mocked.On("LinkSetHardwareAddr", net1Link, expMac).Return(nil)
 			mocked.On("LinkSetNsFd", fakeLink, mock.AnythingOfType("int")).Return(nil)
 			mocked.On("LinkSetUp", fakeLink).Return(nil)
 			mockedPciUtils.On("EnableArpAndNdiscNotify", mock.AnythingOfType("string")).Return(nil)
@@ -296,6 +297,7 @@ var _ = Describe("Sriov", func() {
 			fakeLink := &utils.FakeLink{LinkAttrs: netlink.LinkAttrs{Index: 1000, Name: "dummylink"}}
 
 			mocked.On("LinkByName", netconf.Master).Return(fakeLink, nil)
+			mocked.On("LinkSetVfVlanQosProto", fakeLink, netconf.VFID, netconf.OrigVfState.Vlan, netconf.OrigVfState.VlanQoS, sriovtypes.VlanProtoInt[sriovtypes.Proto8021q]).Return(nil)
 			sm := sriovManager{nLink: mocked}
 			err := sm.ResetVFConfig(netconf)
 			Expect(err).NotTo(HaveOccurred())
@@ -347,7 +349,7 @@ var _ = Describe("Sriov", func() {
 			}}}
 
 			mocked.On("LinkByName", netconf.Master).Return(fakeLink, nil)
-			mocked.On("LinkSetVfVlanQos", fakeLink, netconf.VFID, netconf.OrigVfState.Vlan, netconf.OrigVfState.VlanQoS).Return(nil)
+			mocked.On("LinkSetVfVlanQosProto", fakeLink, netconf.VFID, netconf.OrigVfState.Vlan, netconf.OrigVfState.VlanQoS, sriovtypes.VlanProtoInt[sriovtypes.Proto8021q]).Return(nil)
 			mocked.On("LinkSetVfSpoofchk", fakeLink, netconf.VFID, netconf.OrigVfState.SpoofChk).Return(nil)
 			mocked.On("LinkSetVfHardwareAddr", fakeLink, netconf.VFID, origMac).Return(nil)
 			mocked.On("LinkSetVfTrust", fakeLink, netconf.VFID, false).Return(nil)

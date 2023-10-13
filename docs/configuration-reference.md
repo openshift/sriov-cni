@@ -10,6 +10,7 @@ The SR-IOV CNI configures networks through a CNI spec configuration object. In a
 * `deviceID` (string, required): A valid pci address of an SRIOV NIC's VF. e.g. "0000:03:02.3"
 * `vlan` (int, optional): VLAN ID to assign for the VF. Value must be in the range 0-4094 (0 for disabled, 1-4094 for valid VLAN IDs).
 * `vlanQoS` (int, optional): VLAN QoS to assign for the VF. Value must be in the range 0-7. This option requires `vlan` field to be set to a non-zero value. Otherwise, the error will be returned.
+* `vlanProto` (string, optional): VLAN protocol to assign for the VF. Allowed values: "802.1ad", "802.1q" (default).
 * `mac` (string, optional): MAC address to assign for the VF
 * `spoofchk` (string, optional): turn packet spoof checking on or off for the VF
 * `trust` (string, optional): turn trust setting on or off for the VF
@@ -17,6 +18,9 @@ The SR-IOV CNI configures networks through a CNI spec configuration object. In a
 * `min_tx_rate` (int, optional): change the allowed minimum transmit bandwidth, in Mbps, for the VF. Setting this to 0 disables rate limiting. The min_tx_rate value should be <= max_tx_rate. Support of this feature depends on NICs and drivers.
 * `max_tx_rate` (int, optional): change the allowed maximum transmit bandwidth, in Mbps, for the VF.
 Setting this to 0 disables rate limiting.
+* `logLevel` (string, optional): either of panic, error, warning, info, debug with a default of info.
+* `logFile` (string, optional): path to file for log output. By default, this will log to stderr. Logging to stderr
+means that the logs will show up in crio logs (in the journal in most configurations) and in multus pod logs.
 
 
 An SR-IOV CNI config with each field filled out looks like: 
@@ -27,14 +31,17 @@ An SR-IOV CNI config with each field filled out looks like:
     "name": "sriov-dpdk",
     "type": "sriovi-net",
     "deviceID": "0000:03:02.0",
-    "vlan": 1000,
     "mac": "CA:FE:C0:FF:EE:00",
+    "vlan": 1000,
     "vlanQoS": 4,
+    "vlanProto": "802.1ad",
     "min_tx_rate": 100,
     "max_tx_rate": 200,
     "spoofchk": "off",
     "trust": "on",
-    "link_state": "enable"
+    "link_state": "enable",
+    "logLevel": "debug",
+    "logFile": "/tmp/sriov.log"
 }
 ```
 
