@@ -2,8 +2,10 @@ package sriov
 
 import (
 	"fmt"
+
 	"github.com/containernetworking/plugins/pkg/ns"
 
+	"github.com/k8snetworkplumbingwg/sriov-cni/pkg/logging"
 	sriovtypes "github.com/k8snetworkplumbingwg/sriov-cni/pkg/types"
 	"github.com/k8snetworkplumbingwg/sriov-cni/pkg/utils"
 	"github.com/vishvananda/netlink"
@@ -65,45 +67,72 @@ func (s *sriovManager) SetupVF(conf *sriovtypes.NetConf, podifName string, netns
 		return fmt.Errorf("error getting VF netdevice with name %s", linkName)
 	}
 
+	// Save the original effective MAC address before overriding it
+	conf.OrigVfState.EffectiveMAC = linkObj.Attrs().HardwareAddr.String()
+
 	// tempName used as intermediary name to avoid name conflicts
 	tempName := fmt.Sprintf("%s%d", "temp_", linkObj.Attrs().Index)
 
 	// 1. Set link down
+	logging.Debug("1. Set link down",
+		"func", "SetupVF",
+		"linkObj", linkObj)
 	if err := s.nLink.LinkSetDown(linkObj); err != nil {
 		return fmt.Errorf("failed to down vf device %q: %v", linkName, err)
 	}
 
 	// 2. Set temp name
+	logging.Debug("2. Set temp name",
+		"func", "SetupVF",
+		"linkObj", linkObj,
+		"tempName", tempName)
 	if err := s.nLink.LinkSetName(linkObj, tempName); err != nil {
 		return fmt.Errorf("error setting temp IF name %s for %s", tempName, linkName)
 	}
 
-	// Save the original effective MAC address before overriding it
-	conf.OrigVfState.EffectiveMAC = linkObj.Attrs().HardwareAddr.String()
-	// 3. Set MAC address
-	if conf.MAC != "" {
-		err = utils.SetVFEffectiveMAC(s.nLink, tempName, conf.MAC)
-		if err != nil {
-			return fmt.Errorf("failed to set netlink MAC address to %s: %v", conf.MAC, err)
-		}
-	}
-
-	// 4. Change netns
+	// 3. Change netns
+	logging.Debug("3. Change netns",
+		"func", "SetupVF",
+		"linkObj", linkObj,
+		"netns.Fd()", int(netns.Fd()))
 	if err := s.nLink.LinkSetNsFd(linkObj, int(netns.Fd())); err != nil {
 		return fmt.Errorf("failed to move IF %s to netns: %q", tempName, err)
 	}
 
 	if err := netns.Do(func(_ ns.NetNS) error {
-		// 5. Set Pod IF name
+		// 4. Set Pod IF name
+		logging.Debug("4. Set Pod IF name",
+			"func", "SetupVF",
+			"linkObj", linkObj,
+			"podifName", podifName)
 		if err := s.nLink.LinkSetName(linkObj, podifName); err != nil {
 			return fmt.Errorf("error setting container interface name %s for %s", linkName, tempName)
 		}
 
-		// 6. Enable IPv4 ARP notify and IPv6 Network Discovery notify
+		// 5. Enable IPv4 ARP notify and IPv6 Network Discovery notify
 		// Error is ignored here because enabling this feature is only a performance enhancement.
+		logging.Debug("5. Enable IPv4 ARP notify and IPv6 Network Discovery notify",
+			"func", "SetupVF",
+			"podifName", podifName)
 		_ = s.utils.EnableArpAndNdiscNotify(podifName)
 
+		// 6. Set MAC address
+		if conf.MAC != "" {
+			logging.Debug("6. Set MAC address",
+				"func", "SetupVF",
+				"s.nLink", s.nLink,
+				"podifName", podifName,
+				"conf.MAC", conf.MAC)
+			err = utils.SetVFEffectiveMAC(s.nLink, podifName, conf.MAC)
+			if err != nil {
+				return fmt.Errorf("failed to set netlink MAC address to %s: %v", conf.MAC, err)
+			}
+		}
+
 		// 7. Bring IF up in Pod netns
+		logging.Debug("7. Bring IF up in Pod netns",
+			"func", "SetupVF",
+			"linkObj", linkObj)
 		if err := s.nLink.LinkSetUp(linkObj); err != nil {
 			return fmt.Errorf("error bringing interface up in container ns: %q", err)
 		}
@@ -125,17 +154,27 @@ func (s *sriovManager) ReleaseVF(conf *sriovtypes.NetConf, podifName string, net
 
 	return netns.Do(func(_ ns.NetNS) error {
 		// get VF device
+		logging.Debug("Get VF device",
+			"func", "ReleaseVF",
+			"podifName", podifName)
 		linkObj, err := s.nLink.LinkByName(podifName)
 		if err != nil {
 			return fmt.Errorf("failed to get netlink device with name %s: %q", podifName, err)
 		}
 
 		// shutdown VF device
+		logging.Debug("Shutdown VF device",
+			"func", "ReleaseVF",
+			"linkObj", linkObj)
 		if err = s.nLink.LinkSetDown(linkObj); err != nil {
 			return fmt.Errorf("failed to set link %s down: %q", podifName, err)
 		}
 
 		// rename VF device
+		logging.Debug("Rename VF device",
+			"func", "ReleaseVF",
+			"linkObj", linkObj,
+			"conf.OrigVfState.HostIFName", conf.OrigVfState.HostIFName)
 		err = s.nLink.LinkSetName(linkObj, conf.OrigVfState.HostIFName)
 		if err != nil {
 			return fmt.Errorf("failed to rename link %s to host name %s: %q", podifName, conf.OrigVfState.HostIFName, err)
@@ -143,6 +182,11 @@ func (s *sriovManager) ReleaseVF(conf *sriovtypes.NetConf, podifName string, net
 
 		if conf.MAC != "" {
 			// reset effective MAC address
+			logging.Debug("Reset effective MAC address",
+				"func", "ReleaseVF",
+				"s.nLink", s.nLink,
+				"conf.OrigVfState.HostIFName", conf.OrigVfState.HostIFName,
+				"conf.OrigVfState.EffectiveMAC", conf.OrigVfState.EffectiveMAC)
 			err = utils.SetVFEffectiveMAC(s.nLink, conf.OrigVfState.HostIFName, conf.OrigVfState.EffectiveMAC)
 			if err != nil {
 				return fmt.Errorf("failed to restore original effective netlink MAC address %s: %v", conf.OrigVfState.EffectiveMAC, err)
@@ -150,6 +194,10 @@ func (s *sriovManager) ReleaseVF(conf *sriovtypes.NetConf, podifName string, net
 		}
 
 		// move VF device to init netns
+		logging.Debug("Move VF device to init netns",
+			"func", "ReleaseVF",
+			"linkObj", linkObj,
+			"initns.Fd()", int(initns.Fd()))
 		if err = s.nLink.LinkSetNsFd(linkObj, int(initns.Fd())); err != nil {
 			return fmt.Errorf("failed to move interface %s to init netns: %v", conf.OrigVfState.HostIFName, err)
 		}
@@ -175,21 +223,8 @@ func (s *sriovManager) ApplyVFConfig(conf *sriovtypes.NetConf) error {
 		return fmt.Errorf("failed to lookup master %q: %v", conf.Master, err)
 	}
 	// 1. Set vlan
-	if conf.Vlan == nil {
-		vlan := new(int)
-		*vlan = 0
-		conf.Vlan = vlan
-	}
-	// set vlan qos if present in the config
-	if conf.VlanQoS != nil {
-		if err = s.nLink.LinkSetVfVlanQos(pfLink, conf.VFID, *conf.Vlan, *conf.VlanQoS); err != nil {
-			return fmt.Errorf("failed to set vf %d vlan configuration: %v", conf.VFID, err)
-		}
-	} else {
-		// set vlan id field only
-		if err = s.nLink.LinkSetVfVlan(pfLink, conf.VFID, *conf.Vlan); err != nil {
-			return fmt.Errorf("failed to set vf %d vlan: %v", conf.VFID, err)
-		}
+	if err = s.nLink.LinkSetVfVlanQosProto(pfLink, conf.VFID, *conf.Vlan, *conf.VlanQoS, sriovtypes.VlanProtoInt[*conf.VlanProto]); err != nil {
+		return fmt.Errorf("failed to set vf %d vlan configuration - id %d, qos %d and proto %s: %v", conf.VFID, *conf.Vlan, *conf.VlanQoS, *conf.VlanProto, err)
 	}
 
 	// 2. Set mac address
@@ -287,15 +322,13 @@ func (s *sriovManager) ResetVFConfig(conf *sriovtypes.NetConf) error {
 		return fmt.Errorf("failed to lookup master %q: %v", conf.Master, err)
 	}
 
-	// Restore VLAN
-	if conf.Vlan != nil {
-		if conf.VlanQoS != nil {
-			if err = s.nLink.LinkSetVfVlanQos(pfLink, conf.VFID, conf.OrigVfState.Vlan, conf.OrigVfState.VlanQoS); err != nil {
-				return fmt.Errorf("failed to restore vf %d vlan: %v", conf.VFID, err)
-			}
-		} else if err = s.nLink.LinkSetVfVlan(pfLink, conf.VFID, conf.OrigVfState.Vlan); err != nil {
-			return fmt.Errorf("failed to restore vf %d vlan: %v", conf.VFID, err)
-		}
+	// Set 802.1q as default in case cache config does not have a value for vlan proto.
+	if conf.OrigVfState.VlanProto == 0 {
+		conf.OrigVfState.VlanProto = sriovtypes.VlanProtoInt[sriovtypes.Proto8021q]
+	}
+
+	if err = s.nLink.LinkSetVfVlanQosProto(pfLink, conf.VFID, conf.OrigVfState.Vlan, conf.OrigVfState.VlanQoS, conf.OrigVfState.VlanProto); err != nil {
+		return fmt.Errorf("failed to set vf %d vlan configuration - id %d, qos %d and proto %d: %v", conf.VFID, conf.OrigVfState.Vlan, conf.OrigVfState.VlanQoS, conf.OrigVfState.VlanProto, err)
 	}
 
 	// Restore spoofchk
