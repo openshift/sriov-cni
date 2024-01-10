@@ -1,4 +1,13 @@
-FROM registry.ci.openshift.org/ocp/builder:rhel-9-golang-1.20-openshift-4.14 AS builder
+FROM registry.ci.openshift.org/ocp/builder:rhel-8-golang-1.20-openshift-4.14 AS builder-rhel8
+
+COPY . /usr/src/sriov-cni
+
+WORKDIR /usr/src/sriov-cni
+RUN make clean && \
+    make build
+
+
+FROM registry.ci.openshift.org/ocp/builder:rhel-9-golang-1.20-openshift-4.14 AS builder-rhel9
 
 COPY . /usr/src/sriov-cni
 
@@ -7,7 +16,14 @@ RUN make clean && \
     make build
 
 FROM registry.ci.openshift.org/ocp/4.14:base-rhel9
-COPY --from=builder /usr/src/sriov-cni/build/sriov /usr/bin/
+
+COPY --from=builder-rhel9 /usr/src/sriov-cni/build/sriov /usr/bin/
+
+RUN mkdir /usr/bin/rhel9
+COPY --from=builder-rhel9 /usr/src/sriov-cni/build/sriov /usr/bin/rhel9
+RUN mkdir /usr/bin/rhel8
+COPY --from=builder-rhel8 /usr/src/sriov-cni/build/sriov /usr/bin/rhel8
+
 WORKDIR /
 
 LABEL io.k8s.display-name="SR-IOV CNI"
