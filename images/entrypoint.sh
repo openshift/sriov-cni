@@ -3,11 +3,6 @@
 # Always exit on errors.
 set -e
 
-# Set known directories.
-CNI_BIN_DIR="/host/opt/cni/bin"
-SRIOV_BIN_FILE="/usr/bin/sriov"
-NO_SLEEP=0
-
 # Give help text for parameters.
 usage()
 {
@@ -21,6 +16,58 @@ usage()
     printf "\t--sriov-bin-file=%s\n" "$SRIOV_BIN_FILE"
     printf "\t--no-sleep\n"
 }
+
+get_source_folder_for_rhel_version()
+{
+    if [ ! -f /host/etc/os-release ]; then
+        echo "/usr/bin"
+        return
+    fi
+
+    # shellcheck source=/dev/null
+    . /host/etc/os-release
+    
+    rhelmajor=
+    # detect which version we're using in order to copy the proper binaries
+    case "${ID}" in
+        rhcos|scos)
+            rhelmajor=$(echo "$RHEL_VERSION" | sed -E 's/([0-9]+)\.{1}[0-9]+(\.[0-9]+)?/\1/')
+        ;;
+        rhel) rhelmajor=$(echo "${VERSION_ID}" | cut -f 1 -d .)
+        ;;
+        fedora)
+            if [ "${VARIANT_ID}" = "coreos" ]; then
+            rhelmajor=8
+            else
+            log "FATAL ERROR: Unsupported Fedora variant=${VARIANT_ID}"
+            exit 1
+            fi
+        ;;
+        *) log "FATAL ERROR: Unsupported OS ID=${ID}"; exit 1
+        ;;
+        esac
+        # Set which directory we'll copy from, detect if it exists
+        sourcedir=/usr/bin
+        case "${rhelmajor}" in
+        8)
+        sourcedir=/usr/bin/rhel8
+        ;;
+        9)
+        sourcedir=/usr/bin/rhel9
+        ;;
+        *)
+        log "ERROR: RHEL Major Version Unsupported, rhelmajor=${rhelmajor}"
+        ;;
+    esac
+
+    echo "${sourcedir}"
+}
+
+# Set known directories.
+CNI_BIN_DIR="/host/opt/cni/bin"
+SRIOV_BIN_FILE="$(get_source_folder_for_rhel_version)/sriov"
+NO_SLEEP=0
+
 
 # Parse parameters given as arguments to this script.
 while [ "$1" != "" ]; do
