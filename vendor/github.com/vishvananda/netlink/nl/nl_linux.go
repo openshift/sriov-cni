@@ -559,7 +559,17 @@ done:
 			if m.Header.Pid != pid {
 				continue
 			}
+
+			if m.Header.Flags&unix.NLM_F_DUMP_INTR != 0 {
+				return nil, syscall.Errno(unix.EINTR)
+			}
+
 			if m.Header.Type == unix.NLMSG_DONE || m.Header.Type == unix.NLMSG_ERROR {
+				// NLMSG_DONE might have no payload, if so assume no error.
+				if m.Header.Type == unix.NLMSG_DONE && len(m.Data) == 0 {
+					break done
+				}
+
 				native := NativeEndian()
 				errno := int32(native.Uint32(m.Data[0:4]))
 				if errno == 0 {
@@ -569,7 +579,7 @@ done:
 				err = syscall.Errno(-errno)
 
 				unreadData := m.Data[4:]
-				if m.Header.Flags|unix.NLM_F_ACK_TLVS != 0 && len(unreadData) > syscall.SizeofNlMsghdr {
+				if m.Header.Flags&unix.NLM_F_ACK_TLVS != 0 && len(unreadData) > syscall.SizeofNlMsghdr {
 					// Skip the echoed request message.
 					echoReqH := (*syscall.NlMsghdr)(unsafe.Pointer(&unreadData[0]))
 					unreadData = unreadData[nlmAlignOf(int(echoReqH.Len)):]
@@ -581,8 +591,7 @@ done:
 
 						switch attr.Type {
 						case NLMSGERR_ATTR_MSG:
-							err = fmt.Errorf("%w: %s", err, string(attrData))
-
+							err = fmt.Errorf("%w: %s", err, unix.ByteSliceToString(attrData))
 						default:
 							// TODO: handle other NLMSGERR_ATTR types
 						}
@@ -662,12 +671,14 @@ func GetNetlinkSocketAt(newNs, curNs netns.NsHandle, protocol int) (*NetlinkSock
 // In case of success, the caller is expected to execute the returned function
 // at the end of the code that needs to be executed in the network namespace.
 // Example:
-// func jobAt(...) error {
-//      d, err := executeInNetns(...)
-//      if err != nil { return err}
-//      defer d()
-//      < code which needs to be executed in specific netns>
-//  }
+//
+//	func jobAt(...) error {
+//	     d, err := executeInNetns(...)
+//	     if err != nil { return err}
+//	     defer d()
+//	     < code which needs to be executed in specific netns>
+//	 }
+//
 // TODO: his function probably belongs to netns pkg.
 func executeInNetns(newNs, curNs netns.NsHandle) (func(), error) {
 	var (
@@ -806,6 +817,15 @@ func (s *NetlinkSocket) SetReceiveTimeout(timeout *unix.Timeval) error {
 	return unix.SetsockoptTimeval(int(s.fd), unix.SOL_SOCKET, unix.SO_RCVTIMEO, timeout)
 }
 
+// SetReceiveBufferSize allows to set a receive buffer size on the socket
+func (s *NetlinkSocket) SetReceiveBufferSize(size int, force bool) error {
+	opt := unix.SO_RCVBUF
+	if force {
+		opt = unix.SO_RCVBUFFORCE
+	}
+	return unix.SetsockoptInt(int(s.fd), unix.SOL_SOCKET, opt, size)
+}
+
 // SetExtAck requests error messages to be reported on the socket
 func (s *NetlinkSocket) SetExtAck(enable bool) error {
 	var enableN int
@@ -888,6 +908,22 @@ func ParseRouteAttr(b []byte) ([]syscall.NetlinkRouteAttr, error) {
 		b = b[alen:]
 	}
 	return attrs, nil
+}
+
+// ParseRouteAttrAsMap parses provided buffer that contains raw RtAttrs and returns a map of parsed
+// atttributes indexed by attribute type or error if occured.
+func ParseRouteAttrAsMap(b []byte) (map[uint16]syscall.NetlinkRouteAttr, error) {
+	attrMap := make(map[uint16]syscall.NetlinkRouteAttr)
+
+	attrs, err := ParseRouteAttr(b)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, attr := range attrs {
+		attrMap[attr.Attr.Type] = attr
+	}
+	return attrMap, nil
 }
 
 func netlinkRouteAttrAndValue(b []byte) (*unix.RtAttr, []byte, int, error) {
