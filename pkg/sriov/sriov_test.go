@@ -32,13 +32,13 @@ var _ = Describe("Sriov", func() {
 
 		BeforeEach(func() {
 			podifName = "net1"
-			netconf = &sriovtypes.NetConf{
+			netconf = &sriovtypes.NetConf{SriovNetConf: sriovtypes.SriovNetConf{
 				Master:   "enp175s0f1",
 				DeviceID: "0000:af:06.0",
 				VFID:     0,
 				OrigVfState: sriovtypes.VfState{
 					HostIFName: "enp175s6",
-				},
+				}},
 			}
 			t = GinkgoT()
 		})
@@ -69,8 +69,6 @@ var _ = Describe("Sriov", func() {
 			mocked.On("LinkSetName", fakeLink, mock.Anything).Return(nil)
 			mocked.On("LinkSetNsFd", fakeLink, mock.AnythingOfType("int")).Return(nil)
 			mocked.On("LinkSetUp", fakeLink).Return(nil)
-			mocked.On("LinkSetVfVlan", mock.Anything, mock.AnythingOfType("int"), mock.AnythingOfType("int")).Return(nil)
-			mocked.On("LinkSetVfVlanQos", mock.Anything, mock.AnythingOfType("int"), mock.AnythingOfType("int"), mock.AnythingOfType("int")).Return(nil)
 			mockedPciUtils.On("EnableArpAndNdiscNotify", mock.AnythingOfType("string")).Return(nil)
 			sm := sriovManager{nLink: mocked, utils: mockedPciUtils}
 			err = sm.SetupVF(netconf, podifName, targetNetNS)
@@ -237,6 +235,62 @@ var _ = Describe("Sriov", func() {
 			mocked.AssertExpectations(t)
 		})
 	})
+	Context("Checking ApplyVFConfig function", func() {
+		var (
+			netconf  *sriovtypes.NetConf
+			mocked   *mocks_utils.NetlinkManager
+			fakeLink *utils.FakeLink
+		)
+
+		BeforeEach(func() {
+			netconf = &sriovtypes.NetConf{SriovNetConf: sriovtypes.SriovNetConf{
+				Master: "enp175s0f1",
+				VFID:   0,
+			}}
+			mocked = &mocks_utils.NetlinkManager{}
+			fakeLink = &utils.FakeLink{}
+		})
+
+		It("should not call functions to configure the VF when config has no optional parameters", func() {
+			mocked.On("LinkByName", mock.AnythingOfType("string")).Return(fakeLink, nil)
+			sm := sriovManager{nLink: mocked}
+			err := sm.ApplyVFConfig(netconf)
+			Expect(err).NotTo(HaveOccurred())
+		})
+
+		It("should call functions to configure the VF when config has optional parameters", func() {
+			vlan := 100
+			netconf.Vlan = &vlan
+			qos := 0
+			netconf.VlanQoS = &qos
+			vlanProto := "802.1q"
+			netconf.VlanProto = &vlanProto
+
+			hwaddr, err := net.ParseMAC("aa:f3:8d:65:1b:d4")
+			Expect(err).NotTo(HaveOccurred())
+
+			maxTxRate := 4000
+			minTxRate := 1000
+			netconf.MaxTxRate = &maxTxRate
+			netconf.MinTxRate = &minTxRate
+
+			netconf.SpoofChk = "on"
+			netconf.Trust = "on"
+			netconf.LinkState = "enable"
+
+			mocked.On("LinkByName", mock.AnythingOfType("string")).Return(fakeLink, nil)
+			mocked.On("LinkSetVfVlanQosProto", fakeLink, netconf.VFID, *netconf.Vlan, *netconf.VlanQoS, sriovtypes.VlanProtoInt[sriovtypes.Proto8021q]).Return(nil)
+			mocked.On("LinkSetVfHardwareAddr", fakeLink, netconf.VFID, hwaddr).Return(nil)
+			mocked.On("LinkSetVfRate", fakeLink, netconf.VFID, *netconf.MinTxRate, *netconf.MaxTxRate).Return(nil)
+			mocked.On("LinkSetVfSpoofchk", fakeLink, netconf.VFID, true).Return(nil)
+			mocked.On("LinkSetVfTrust", fakeLink, netconf.VFID, true).Return(nil)
+			mocked.On("LinkSetVfState", fakeLink, netconf.VFID, netlink.VF_LINK_STATE_ENABLE).Return(nil)
+
+			sm := sriovManager{nLink: mocked}
+			err = sm.ApplyVFConfig(netconf)
+			Expect(err).NotTo(HaveOccurred())
+		})
+	})
 	Context("Checking ReleaseVF function", func() {
 		var (
 			podifName string
@@ -245,14 +299,14 @@ var _ = Describe("Sriov", func() {
 
 		BeforeEach(func() {
 			podifName = "net1"
-			netconf = &sriovtypes.NetConf{
+			netconf = &sriovtypes.NetConf{SriovNetConf: sriovtypes.SriovNetConf{
 				Master:   "enp175s0f1",
 				DeviceID: "0000:af:06.0",
 				VFID:     0,
 				OrigVfState: sriovtypes.VfState{
 					HostIFName:   "enp175s6",
 					EffectiveMAC: "6e:16:06:0e:b7:e9",
-				},
+				}},
 			}
 		})
 		It("Assuming existing interface", func() {
@@ -288,14 +342,14 @@ var _ = Describe("Sriov", func() {
 
 		BeforeEach(func() {
 			podifName = "net1"
-			netconf = &sriovtypes.NetConf{
+			netconf = &sriovtypes.NetConf{SriovNetConf: sriovtypes.SriovNetConf{
 				Master:   "enp175s0f1",
 				DeviceID: "0000:af:06.0",
 				VFID:     0,
 				OrigVfState: sriovtypes.VfState{
 					HostIFName:   "enp175s6",
 					EffectiveMAC: "c6:c8:7f:1f:21:90",
-				},
+				}},
 			}
 		})
 		It("Should not restores Effective MAC address when it is not provided in netconf", func() {
@@ -359,13 +413,13 @@ var _ = Describe("Sriov", func() {
 		)
 
 		BeforeEach(func() {
-			netconf = &sriovtypes.NetConf{
+			netconf = &sriovtypes.NetConf{SriovNetConf: sriovtypes.SriovNetConf{
 				Master:   "enp175s0f1",
 				DeviceID: "0000:af:06.0",
 				VFID:     0,
 				OrigVfState: sriovtypes.VfState{
 					HostIFName: "enp175s6",
-				},
+				}},
 			}
 		})
 		It("Saves the current VF state", func() {
@@ -398,13 +452,13 @@ var _ = Describe("Sriov", func() {
 		)
 
 		BeforeEach(func() {
-			netconf = &sriovtypes.NetConf{
+			netconf = &sriovtypes.NetConf{SriovNetConf: sriovtypes.SriovNetConf{
 				Master:   "enp175s0f1",
 				DeviceID: "0000:af:06.0",
 				VFID:     0,
 				OrigVfState: sriovtypes.VfState{
 					HostIFName: "enp175s6",
-				},
+				}},
 			}
 		})
 		It("Does not change VF config if it wasnt requested to be changed in netconf", func() {
@@ -412,7 +466,6 @@ var _ = Describe("Sriov", func() {
 			fakeLink := &utils.FakeLink{LinkAttrs: netlink.LinkAttrs{Index: 1000, Name: "dummylink"}}
 
 			mocked.On("LinkByName", netconf.Master).Return(fakeLink, nil)
-			mocked.On("LinkSetVfVlanQosProto", fakeLink, netconf.VFID, netconf.OrigVfState.Vlan, netconf.OrigVfState.VlanQoS, sriovtypes.VlanProtoInt[sriovtypes.Proto8021q]).Return(nil)
 			sm := sriovManager{nLink: mocked}
 			err := sm.ResetVFConfig(netconf)
 			Expect(err).NotTo(HaveOccurred())
@@ -430,7 +483,7 @@ var _ = Describe("Sriov", func() {
 			maxTxRate := 4000
 			minTxRate := 1000
 
-			netconf = &sriovtypes.NetConf{
+			netconf = &sriovtypes.NetConf{SriovNetConf: sriovtypes.SriovNetConf{
 				Master:    "enp175s0f1",
 				DeviceID:  "0000:af:06.0",
 				VFID:      0,
@@ -452,7 +505,7 @@ var _ = Describe("Sriov", func() {
 					MinTxRate:    0,
 					MaxTxRate:    0,
 					LinkState:    2, // disable
-				},
+				}},
 			}
 		})
 		It("Restores original VF configurations", func() {
@@ -487,7 +540,11 @@ var _ = Describe("Sriov", func() {
 			mockedPciUtils := &mocks.PciUtils{}
 			vlan := 0
 			vlanProto := sriovtypes.Proto8021q
-			netconf = &sriovtypes.NetConf{Master: "ens1s0", Vlan: &vlan, VlanQoS: &vlan, VlanProto: &vlanProto}
+			netconf = &sriovtypes.NetConf{SriovNetConf: sriovtypes.SriovNetConf{
+				Master:    "ens1s0",
+				Vlan:      &vlan,
+				VlanQoS:   &vlan,
+				VlanProto: &vlanProto}}
 			fakeLink := &utils.FakeLink{LinkAttrs: netlink.LinkAttrs{
 				Index: 1000,
 				Name:  "ens1s0",
