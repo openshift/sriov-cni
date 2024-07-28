@@ -227,10 +227,7 @@ const (
 	IFLA_GENEVE_UDP_ZERO_CSUM6_TX
 	IFLA_GENEVE_UDP_ZERO_CSUM6_RX
 	IFLA_GENEVE_LABEL
-	IFLA_GENEVE_TTL_INHERIT
-	IFLA_GENEVE_DF
-	IFLA_GENEVE_INNER_PROTO_INHERIT
-	IFLA_GENEVE_MAX = IFLA_GENEVE_INNER_PROTO_INHERIT
+	IFLA_GENEVE_MAX = IFLA_GENEVE_LABEL
 )
 
 const (
@@ -321,7 +318,7 @@ const (
 const (
 	SizeofVfMac        = 0x24
 	SizeofVfVlan       = 0x0c
-	SizeofVfVlanInfo   = 0x10
+	SizeofVfVlanInfo   = 0x0e
 	SizeofVfTxRate     = 0x08
 	SizeofVfRate       = 0x0c
 	SizeofVfSpoofchk   = 0x08
