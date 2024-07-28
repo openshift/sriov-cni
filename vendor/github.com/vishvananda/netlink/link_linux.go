@@ -1867,9 +1867,6 @@ func (h *Handle) LinkByName(name string) (Link, error) {
 	req.AddData(attr)
 
 	nameData := nl.NewRtAttr(unix.IFLA_IFNAME, nl.ZeroTerminated(name))
-	if len(name) > 15 {
-		nameData = nl.NewRtAttr(unix.IFLA_ALT_IFNAME, nl.ZeroTerminated(name))
-	}
 	req.AddData(nameData)
 
 	link, err := execGetLink(req)
@@ -1975,6 +1972,9 @@ func LinkDeserialize(hdr *unix.NlMsghdr, m []byte) (Link, error) {
 	base.Flags = linkFlags(msg.Flags)
 	base.EncapType = msg.EncapType()
 	base.NetNsID = -1
+	if msg.Flags&unix.IFF_PROMISC != 0 {
+		base.Promisc = 1
+	}
 	if msg.Flags&unix.IFF_ALLMULTI != 0 {
 		base.Allmulti = 1
 	}
@@ -2161,8 +2161,6 @@ func LinkDeserialize(hdr *unix.NlMsghdr, m []byte) (Link, error) {
 			base.Name = string(attr.Value[:len(attr.Value)-1])
 		case unix.IFLA_MTU:
 			base.MTU = int(native.Uint32(attr.Value[0:4]))
-		case unix.IFLA_PROMISCUITY:
-			base.Promisc = int(native.Uint32(attr.Value[0:4]))
 		case unix.IFLA_LINK:
 			base.ParentIndex = int(native.Uint32(attr.Value[0:4]))
 		case unix.IFLA_MASTER:
@@ -2245,13 +2243,6 @@ func LinkDeserialize(hdr *unix.NlMsghdr, m []byte) (Link, error) {
 			base.NumRxQueues = int(native.Uint32(attr.Value[0:4]))
 		case unix.IFLA_GROUP:
 			base.Group = native.Uint32(attr.Value[0:4])
-		case unix.IFLA_PERM_ADDRESS:
-			for _, b := range attr.Value {
-				if b != 0 {
-					base.PermHWAddr = attr.Value[:]
-					break
-				}
-			}
 		}
 	}
 
@@ -2493,16 +2484,6 @@ func (h *Handle) LinkSetGuard(link Link, mode bool) error {
 	return h.setProtinfoAttr(link, mode, nl.IFLA_BRPORT_GUARD)
 }
 
-// LinkSetBRSlaveGroupFwdMask set the group_fwd_mask of a bridge slave interface
-func LinkSetBRSlaveGroupFwdMask(link Link, mask uint16) error {
-	return pkgHandle.LinkSetBRSlaveGroupFwdMask(link, mask)
-}
-
-// LinkSetBRSlaveGroupFwdMask set the group_fwd_mask of a bridge slave interface
-func (h *Handle) LinkSetBRSlaveGroupFwdMask(link Link, mask uint16) error {
-	return h.setProtinfoAttrRawVal(link, nl.Uint16Attr(mask), nl.IFLA_BRPORT_GROUP_FWD_MASK)
-}
-
 func LinkSetFastLeave(link Link, mode bool) error {
 	return pkgHandle.LinkSetFastLeave(link, mode)
 }
@@ -2567,7 +2548,7 @@ func (h *Handle) LinkSetBrNeighSuppress(link Link, mode bool) error {
 	return h.setProtinfoAttr(link, mode, nl.IFLA_BRPORT_NEIGH_SUPPRESS)
 }
 
-func (h *Handle) setProtinfoAttrRawVal(link Link, val []byte, attr int) error {
+func (h *Handle) setProtinfoAttr(link Link, mode bool, attr int) error {
 	base := link.Attrs()
 	h.ensureIndex(base)
 	req := h.newNetlinkRequest(unix.RTM_SETLINK, unix.NLM_F_ACK)
@@ -2577,16 +2558,13 @@ func (h *Handle) setProtinfoAttrRawVal(link Link, val []byte, attr int) error {
 	req.AddData(msg)
 
 	br := nl.NewRtAttr(unix.IFLA_PROTINFO|unix.NLA_F_NESTED, nil)
-	br.AddRtAttr(attr, val)
+	br.AddRtAttr(attr, boolToByte(mode))
 	req.AddData(br)
 	_, err := req.Execute(unix.NETLINK_ROUTE, 0)
 	if err != nil {
 		return err
 	}
 	return nil
-}
-func (h *Handle) setProtinfoAttr(link Link, mode bool, attr int) error {
-	return h.setProtinfoAttrRawVal(link, boolToByte(mode), attr)
 }
 
 // LinkSetTxQLen sets the transaction queue length for the link.
@@ -3013,10 +2991,6 @@ func linkFlags(rawFlags uint32) net.Flags {
 func addGeneveAttrs(geneve *Geneve, linkInfo *nl.RtAttr) {
 	data := linkInfo.AddRtAttr(nl.IFLA_INFO_DATA, nil)
 
-	if geneve.InnerProtoInherit {
-		data.AddRtAttr(nl.IFLA_GENEVE_INNER_PROTO_INHERIT, []byte{})
-	}
-
 	if geneve.FlowBased {
 		geneve.ID = 0
 		data.AddRtAttr(nl.IFLA_GENEVE_COLLECT_METADATA, []byte{})
@@ -3045,8 +3019,6 @@ func addGeneveAttrs(geneve *Geneve, linkInfo *nl.RtAttr) {
 	if geneve.Tos != 0 {
 		data.AddRtAttr(nl.IFLA_GENEVE_TOS, nl.Uint8Attr(geneve.Tos))
 	}
-
-	data.AddRtAttr(nl.IFLA_GENEVE_DF, nl.Uint8Attr(uint8(geneve.Df)))
 }
 
 func parseGeneveData(link Link, data []syscall.NetlinkRouteAttr) {
@@ -3065,8 +3037,6 @@ func parseGeneveData(link Link, data []syscall.NetlinkRouteAttr) {
 			geneve.Tos = uint8(datum.Value[0])
 		case nl.IFLA_GENEVE_COLLECT_METADATA:
 			geneve.FlowBased = true
-		case nl.IFLA_GENEVE_INNER_PROTO_INHERIT:
-			geneve.InnerProtoInherit = true
 		}
 	}
 }
@@ -3553,9 +3523,6 @@ func addBridgeAttrs(bridge *Bridge, linkInfo *nl.RtAttr) {
 	if bridge.VlanDefaultPVID != nil {
 		data.AddRtAttr(nl.IFLA_BR_VLAN_DEFAULT_PVID, nl.Uint16Attr(*bridge.VlanDefaultPVID))
 	}
-	if bridge.GroupFwdMask != nil {
-		data.AddRtAttr(nl.IFLA_BR_GROUP_FWD_MASK, nl.Uint16Attr(*bridge.GroupFwdMask))
-	}
 }
 
 func parseBridgeData(bridge Link, data []syscall.NetlinkRouteAttr) {
@@ -3577,9 +3544,6 @@ func parseBridgeData(bridge Link, data []syscall.NetlinkRouteAttr) {
 		case nl.IFLA_BR_VLAN_DEFAULT_PVID:
 			vlanDefaultPVID := native.Uint16(datum.Value[0:2])
 			br.VlanDefaultPVID = &vlanDefaultPVID
-		case nl.IFLA_BR_GROUP_FWD_MASK:
-			mask := native.Uint16(datum.Value[0:2])
-			br.GroupFwdMask = &mask
 		}
 	}
 }
@@ -3704,7 +3668,8 @@ func parseXfrmiData(link Link, data []syscall.NetlinkRouteAttr) {
 	}
 }
 
-func ioctlBondSlave(cmd uintptr, link Link, master *Bond) error {
+// LinkSetBondSlave add slave to bond link via ioctl interface.
+func LinkSetBondSlave(link Link, master *Bond) error {
 	fd, err := getSocketUDP()
 	if err != nil {
 		return err
@@ -3712,38 +3677,10 @@ func ioctlBondSlave(cmd uintptr, link Link, master *Bond) error {
 	defer syscall.Close(fd)
 
 	ifreq := newIocltSlaveReq(link.Attrs().Name, master.Attrs().Name)
-	_, _, errno := syscall.Syscall(syscall.SYS_IOCTL, uintptr(fd), cmd, uintptr(unsafe.Pointer(ifreq)))
+
+	_, _, errno := syscall.Syscall(syscall.SYS_IOCTL, uintptr(fd), unix.SIOCBONDENSLAVE, uintptr(unsafe.Pointer(ifreq)))
 	if errno != 0 {
-		return fmt.Errorf("errno=%v", errno)
-	}
-	return nil
-}
-
-// LinkSetBondSlaveActive sets specified slave to ACTIVE in an `active-backup` bond link via ioctl interface.
-//
-//	Multiple calls keeps the status unchanged(shown in the unit test).
-func LinkSetBondSlaveActive(link Link, master *Bond) error {
-	err := ioctlBondSlave(unix.SIOCBONDCHANGEACTIVE, link, master)
-	if err != nil {
-		return fmt.Errorf("Failed to set slave %q active in %q, %v", link.Attrs().Name, master.Attrs().Name, err)
-	}
-	return nil
-}
-
-// LinkSetBondSlave add slave to bond link via ioctl interface.
-func LinkSetBondSlave(link Link, master *Bond) error {
-	err := ioctlBondSlave(unix.SIOCBONDENSLAVE, link, master)
-	if err != nil {
-		return fmt.Errorf("Failed to enslave %q to %q, %v", link.Attrs().Name, master.Attrs().Name, err)
-	}
-	return nil
-}
-
-// LinkSetBondSlave removes specified slave from bond link via ioctl interface.
-func LinkDelBondSlave(link Link, master *Bond) error {
-	err := ioctlBondSlave(unix.SIOCBONDRELEASE, link, master)
-	if err != nil {
-		return fmt.Errorf("Failed to del slave %q from %q, %v", link.Attrs().Name, master.Attrs().Name, err)
+		return fmt.Errorf("Failed to enslave %q to %q, errno=%v", link.Attrs().Name, master.Attrs().Name, errno)
 	}
 	return nil
 }
