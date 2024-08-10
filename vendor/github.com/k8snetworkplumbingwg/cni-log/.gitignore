@@ -1,0 +1,15 @@
+# Binary output dir
+bin/
+e2e/bin/
+
+# GOPATH created by the build script
+gopath/
+
+# Editor paths
+.swp*
+.swo*
+.idea*
+
+# Test outputs
+*.out
+*.test
