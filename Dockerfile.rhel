@@ -4,7 +4,7 @@ COPY . /usr/src/sriov-cni
 
 WORKDIR /usr/src/sriov-cni
 RUN make clean && \
-    GO_TAGS="" make build
+    GO_TAGS="" GO_BUILD_OPTS=CGO_ENABLED=1 make build
 
 
 FROM registry.ci.openshift.org/ocp/builder:rhel-9-golang-1.22-openshift-4.18 AS builder-rhel9
@@ -13,7 +13,7 @@ COPY . /usr/src/sriov-cni
 
 WORKDIR /usr/src/sriov-cni
 RUN make clean && \
-    GO_TAGS="" make build
+    GO_TAGS="" GO_BUILD_OPTS=CGO_ENABLED=1 make build
 
 FROM registry.ci.openshift.org/ocp/4.18:base-rhel9
 
