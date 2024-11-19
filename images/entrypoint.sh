@@ -32,6 +32,9 @@ get_source_folder_for_rhel_version()
     case "${ID}" in
         rhcos|scos)
             rhelmajor=$(echo "$RHEL_VERSION" | sed -E 's/([0-9]+)\.{1}[0-9]+(\.[0-9]+)?/\1/')
+            if [ -z "$rhelmajor" -a "$ID" = scos ] ; then
+                rhelmajor="$(echo "$PLATFORM_ID" | sed -E 's/^platform:el([0-9]+)$/\1/')"
+            fi
         ;;
         rhel) rhelmajor=$(echo "${VERSION_ID}" | cut -f 1 -d .)
         ;;
@@ -39,11 +42,11 @@ get_source_folder_for_rhel_version()
             if [ "${VARIANT_ID}" = "coreos" ]; then
             rhelmajor=8
             else
-            log "FATAL ERROR: Unsupported Fedora variant=${VARIANT_ID}"
+            echo "FATAL ERROR: Unsupported Fedora variant=${VARIANT_ID}"
             exit 1
             fi
         ;;
-        *) log "FATAL ERROR: Unsupported OS ID=${ID}"; exit 1
+        *) echo "FATAL ERROR: Unsupported OS ID=${ID}"; exit 1
         ;;
         esac
         # Set which directory we'll copy from, detect if it exists
@@ -56,7 +59,7 @@ get_source_folder_for_rhel_version()
         sourcedir=/usr/bin/rhel9
         ;;
         *)
-        log "ERROR: RHEL Major Version Unsupported, rhelmajor=${rhelmajor}"
+        echo "ERROR: RHEL Major Version Unsupported, rhelmajor=${rhelmajor}"
         ;;
     esac
 
