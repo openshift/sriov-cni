@@ -36,7 +36,7 @@ get_source_folder_for_rhel_version()
                 rhelmajor="$(echo "$PLATFORM_ID" | sed -E 's/^platform:el([0-9]+)$/\1/')"
             fi
         ;;
-        rhel) rhelmajor=$(echo "${VERSION_ID}" | cut -f 1 -d .)
+        rhel|centos) rhelmajor=$(echo "${VERSION_ID}" | cut -f 1 -d .)
         ;;
         fedora)
             if [ "${VARIANT_ID}" = "coreos" ]; then
