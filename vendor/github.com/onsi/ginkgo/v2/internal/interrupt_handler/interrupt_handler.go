@@ -10,7 +10,7 @@ import (
 	"github.com/onsi/ginkgo/v2/internal/parallel_support"
 )
 
-const ABORT_POLLING_INTERVAL = 500 * time.Millisecond
+var ABORT_POLLING_INTERVAL = 500 * time.Millisecond
 
 type InterruptCause uint
 
@@ -40,7 +40,7 @@ func (ic InterruptCause) String() string {
 }
 
 type InterruptStatus struct {
-	Channel chan interface{}
+	Channel chan any
 	Level   InterruptLevel
 	Cause   InterruptCause
 }
@@ -62,13 +62,14 @@ type InterruptHandlerInterface interface {
 }
 
 type InterruptHandler struct {
-	c       chan interface{}
-	lock    *sync.Mutex
-	level   InterruptLevel
-	cause   InterruptCause
-	client  parallel_support.Client
-	stop    chan interface{}
-	signals []os.Signal
+	c                 chan any
+	lock              *sync.Mutex
+	level             InterruptLevel
+	cause             InterruptCause
+	client            parallel_support.Client
+	stop              chan any
+	signals           []os.Signal
+	requestAbortCheck chan any
 }
 
 func NewInterruptHandler(client parallel_support.Client, signals ...os.Signal) *InterruptHandler {
@@ -76,11 +77,12 @@ func NewInterruptHandler(client parallel_support.Client, signals ...os.Signal) *
 		signals = []os.Signal{os.Interrupt, syscall.SIGTERM}
 	}
 	handler := &InterruptHandler{
-		c:       make(chan interface{}),
-		lock:    &sync.Mutex{},
-		stop:    make(chan interface{}),
-		client:  client,
-		signals: signals,
+		c:                 make(chan any),
+		lock:              &sync.Mutex{},
+		stop:              make(chan any),
+		requestAbortCheck: make(chan any),
+		client:            client,
+		signals:           signals,
 	}
 	handler.registerForInterrupts()
 	return handler
@@ -96,14 +98,20 @@ func (handler *InterruptHandler) registerForInterrupts() {
 	signal.Notify(signalChannel, handler.signals...)
 
 	// cross-process abort handling
-	var abortChannel chan interface{}
+	var abortChannel chan any
 	if handler.client != nil {
-		abortChannel = make(chan interface{})
+		abortChannel = make(chan any)
 		go func() {
 			pollTicker := time.NewTicker(ABORT_POLLING_INTERVAL)
 			for {
 				select {
 				case <-pollTicker.C:
+					if handler.client.ShouldAbort() {
+						close(abortChannel)
+						pollTicker.Stop()
+						return
+					}
+				case <-handler.requestAbortCheck:
 					if handler.client.ShouldAbort() {
 						close(abortChannel)
 						pollTicker.Stop()
@@ -117,7 +125,7 @@ func (handler *InterruptHandler) registerForInterrupts() {
 		}()
 	}
 
-	go func(abortChannel chan interface{}) {
+	go func(abortChannel chan any) {
 		var interruptCause InterruptCause
 		for {
 			select {
@@ -143,7 +151,7 @@ func (handler *InterruptHandler) registerForInterrupts() {
 			}
 			if handler.level != oldLevel {
 				close(handler.c)
-				handler.c = make(chan interface{})
+				handler.c = make(chan any)
 			}
 			handler.lock.Unlock()
 		}
@@ -152,11 +160,18 @@ func (handler *InterruptHandler) registerForInterrupts() {
 
 func (handler *InterruptHandler) Status() InterruptStatus {
 	handler.lock.Lock()
-	defer handler.lock.Unlock()
-
-	return InterruptStatus{
+	status := InterruptStatus{
 		Level:   handler.level,
 		Channel: handler.c,
 		Cause:   handler.cause,
 	}
+	handler.lock.Unlock()
+
+	if handler.client != nil && handler.client.ShouldAbort() && !status.Interrupted() {
+		close(handler.requestAbortCheck)
+		<-status.Channel
+		return handler.Status()
+	}
+
+	return status
 }

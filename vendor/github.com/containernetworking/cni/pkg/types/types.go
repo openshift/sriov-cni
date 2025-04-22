@@ -56,8 +56,12 @@ func (n *IPNet) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// NetConf describes a network.
-type NetConf struct {
+// Use PluginConf instead of NetConf, the NetConf
+// backwards-compat alias will be removed in a future release.
+type NetConf = PluginConf
+
+// PluginConf describes a plugin configuration for a specific network.
+type PluginConf struct {
 	CNIVersion string `json:"cniVersion,omitempty"`
 
 	Name         string          `json:"name,omitempty"`
@@ -68,15 +72,23 @@ type NetConf struct {
 
 	RawPrevResult map[string]interface{} `json:"prevResult,omitempty"`
 	PrevResult    Result                 `json:"-"`
+
+	// ValidAttachments is only supplied when executing a GC operation
+	ValidAttachments []GCAttachment `json:"cni.dev/valid-attachments,omitempty"`
+}
+
+// GCAttachment is the parameters to a GC call -- namely,
+// the container ID and ifname pair that represents a
+// still-valid attachment.
+type GCAttachment struct {
+	ContainerID string `json:"containerID"`
+	IfName      string `json:"ifname"`
 }
 
 // Note: DNS should be omit if DNS is empty but default Marshal function
 // will output empty structure hence need to write a Marshal function
-func (n *NetConf) MarshalJSON() ([]byte, error) {
-	// use type alias to escape recursion for json.Marshal() to MarshalJSON()
-	type fixObjType = NetConf
-
-	bytes, err := json.Marshal(fixObjType(*n)) //nolint:all
+func (n *PluginConf) MarshalJSON() ([]byte, error) {
+	bytes, err := json.Marshal(*n)
 	if err != nil {
 		return nil, err
 	}
@@ -106,9 +118,10 @@ func (i *IPAM) IsEmpty() bool {
 type NetConfList struct {
 	CNIVersion string `json:"cniVersion,omitempty"`
 
-	Name         string     `json:"name,omitempty"`
-	DisableCheck bool       `json:"disableCheck,omitempty"`
-	Plugins      []*NetConf `json:"plugins,omitempty"`
+	Name         string        `json:"name,omitempty"`
+	DisableCheck bool          `json:"disableCheck,omitempty"`
+	DisableGC    bool          `json:"disableGC,omitempty"`
+	Plugins      []*PluginConf `json:"plugins,omitempty"`
 }
 
 // Result is an interface that provides the result of plugin execution

@@ -13,7 +13,7 @@ func NewOutputInterceptor() OutputInterceptor {
 	return &genericOutputInterceptor{
 		interceptedContent: make(chan string),
 		pipeChannel:        make(chan pipePair),
-		shutdown:           make(chan interface{}),
+		shutdown:           make(chan any),
 		implementation:     &dupSyscallOutputInterceptorImpl{},
 	}
 }
@@ -25,6 +25,17 @@ func (impl *dupSyscallOutputInterceptorImpl) CreateStdoutStderrClones() (*os.Fil
 	// First, create two clone file descriptors that point to the stdout and stderr file descriptions
 	stdoutCloneFD, _ := unix.Dup(1)
 	stderrCloneFD, _ := unix.Dup(2)
+
+	// Important, set the fds to FD_CLOEXEC to prevent them leaking into childs
+	// https://github.com/onsi/ginkgo/issues/1191
+	flags, err := unix.FcntlInt(uintptr(stdoutCloneFD), unix.F_GETFD, 0)
+	if err == nil {
+		unix.FcntlInt(uintptr(stdoutCloneFD), unix.F_SETFD, flags|unix.FD_CLOEXEC)
+	}
+	flags, err = unix.FcntlInt(uintptr(stderrCloneFD), unix.F_GETFD, 0)
+	if err == nil {
+		unix.FcntlInt(uintptr(stderrCloneFD), unix.F_SETFD, flags|unix.FD_CLOEXEC)
+	}
 
 	// And then wrap the clone file descriptors in files.
 	// One benefit of this (that we don't use yet) is that we can actually write

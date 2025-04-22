@@ -7,6 +7,10 @@
 package utils
 
 import (
+	"fmt"
+	"log"
+	"math"
+	"net"
 	"os"
 	"path/filepath"
 	"syscall"
@@ -77,7 +81,6 @@ func CreateTmpSysFs() error {
 	}
 
 	ts.dirRoot = tmpdir
-	//syscall.Chroot(ts.dirRoot)
 
 	for _, dir := range ts.dirList {
 		if err := os.MkdirAll(filepath.Join(ts.dirRoot, dir), 0755); err != nil {
@@ -124,14 +127,13 @@ func createSymlinks(link, target string) error {
 
 // RemoveTmpSysFs removes mocked sysfs
 func RemoveTmpSysFs() error {
-	err := ts.originalRoot.Chdir()
-	if err != nil {
+	if err := ts.originalRoot.Chdir(); err != nil {
 		return err
 	}
-	if err = syscall.Chroot("."); err != nil {
+	if err := syscall.Chroot("."); err != nil {
 		return err
 	}
-	if err = ts.originalRoot.Close(); err != nil {
+	if err := ts.originalRoot.Close(); err != nil {
 		return err
 	}
 
@@ -153,4 +155,164 @@ func (l *FakeLink) Attrs() *netlink.LinkAttrs {
 
 func (l *FakeLink) Type() string {
 	return "FakeLink"
+}
+
+func MockNetlinkLib(methodCallRecordingDir string) func() {
+	oldnetlinkLib := netLinkLib
+	// see `ts` variable in this file
+	// "sys/devices/pci0000:ae/0000:ae:00.0/0000:af:00.1/sriov_numvfs": []byte("2"),
+	netLinkLib = newPFMockNetlinkLib(methodCallRecordingDir, "enp175s0f1", 2)
+
+	return func() {
+		netLinkLib = oldnetlinkLib
+	}
+}
+
+// pfMockNetlinkLib creates dummy interfaces for Physical and Virtual functions, recording method calls on a log file in the form
+// <method_name> <arg1> <arg2> ...
+type pfMockNetlinkLib struct {
+	pf                           netlink.Link
+	methodCallsRecordingFilePath string
+}
+
+func newPFMockNetlinkLib(recordDir, pfName string, numvfs int) *pfMockNetlinkLib {
+	ret := &pfMockNetlinkLib{
+		pf: &netlink.Dummy{
+			LinkAttrs: netlink.LinkAttrs{
+				Name: pfName,
+				Vfs:  []netlink.VfInfo{},
+			},
+		},
+	}
+
+	for i := 0; i < numvfs; i++ {
+		ret.pf.Attrs().Vfs = append(ret.pf.Attrs().Vfs, netlink.VfInfo{
+			ID:  i,
+			Mac: mustParseMAC(fmt.Sprintf("ab:cd:ef:ab:cd:%02x", i)),
+		})
+	}
+
+	ret.methodCallsRecordingFilePath = filepath.Join(recordDir, pfName+".calls")
+
+	ret.recordMethodCall("---")
+
+	return ret
+}
+
+func (p *pfMockNetlinkLib) LinkByName(name string) (netlink.Link, error) {
+	p.recordMethodCall("LinkByName %s", name)
+	if name == p.pf.Attrs().Name {
+		return p.pf, nil
+	}
+	return netlink.LinkByName(name)
+}
+
+func (p *pfMockNetlinkLib) LinkSetVfVlanQosProto(link netlink.Link, vfIndex, vlan, vlanQos, vlanProto int) error {
+	p.recordMethodCall("LinkSetVfVlanQosProto %s %d %d %d %d", link.Attrs().Name, vfIndex, vlan, vlanQos, vlanProto)
+	return nil
+}
+
+func (p *pfMockNetlinkLib) LinkSetVfHardwareAddr(pfLink netlink.Link, vfIndex int, hwaddr net.HardwareAddr) error {
+	p.recordMethodCall("LinkSetVfHardwareAddr %s %d %s", pfLink.Attrs().Name, vfIndex, hwaddr.String())
+	pfLink.Attrs().Vfs[vfIndex].Mac = hwaddr
+	return nil
+}
+
+func (p *pfMockNetlinkLib) LinkSetHardwareAddr(link netlink.Link, hwaddr net.HardwareAddr) error {
+	p.recordMethodCall("LinkSetHardwareAddr %s %s", link.Attrs().Name, hwaddr.String())
+	return netlink.LinkSetHardwareAddr(link, hwaddr)
+}
+
+func (p *pfMockNetlinkLib) LinkSetUp(link netlink.Link) error {
+	p.recordMethodCall("LinkSetUp %s", link.Attrs().Name)
+	return netlink.LinkSetUp(link)
+}
+
+func (p *pfMockNetlinkLib) LinkSetDown(link netlink.Link) error {
+	p.recordMethodCall("LinkSetDown %s", link.Attrs().Name)
+	return netlink.LinkSetDown(link)
+}
+
+func (p *pfMockNetlinkLib) LinkSetNsFd(link netlink.Link, nsFd int) error {
+	p.recordMethodCall("LinkSetNsFd %s %d", link.Attrs().Name, nsFd)
+	return netlink.LinkSetNsFd(link, nsFd)
+}
+
+func (p *pfMockNetlinkLib) LinkSetName(link netlink.Link, name string) error {
+	p.recordMethodCall("LinkSetName %s %s", link.Attrs().Name, name)
+	link.Attrs().Name = name
+	return netlink.LinkSetName(link, name)
+}
+
+//nolint:gosec
+func (p *pfMockNetlinkLib) LinkSetVfRate(pfLink netlink.Link, vfIndex, minRate, maxRate int) error {
+	p.recordMethodCall("LinkSetVfRate %s %d %d %d", pfLink.Attrs().Name, vfIndex, minRate, maxRate)
+
+	if maxRate > math.MaxUint32 {
+		maxRate = math.MaxUint32
+	}
+	//nolint:gosec
+	pfLink.Attrs().Vfs[vfIndex].MaxTxRate = uint32(maxRate)
+
+	if minRate > math.MaxUint32 {
+		minRate = math.MaxUint32
+	}
+	//nolint:gosec
+	pfLink.Attrs().Vfs[vfIndex].MinTxRate = uint32(minRate)
+	return nil
+}
+
+func (p *pfMockNetlinkLib) LinkSetVfSpoofchk(pfLink netlink.Link, vfIndex int, spoofChk bool) error {
+	p.recordMethodCall("LinkSetVfRate %s %d %t", pfLink.Attrs().Name, vfIndex, spoofChk)
+	pfLink.Attrs().Vfs[vfIndex].Spoofchk = spoofChk
+	return nil
+}
+
+func (p *pfMockNetlinkLib) LinkSetVfTrust(pfLink netlink.Link, vfIndex int, trust bool) error {
+	p.recordMethodCall("LinkSetVfTrust %s %d %d", pfLink.Attrs().Name, vfIndex, trust)
+	if trust {
+		pfLink.Attrs().Vfs[vfIndex].Trust = 1
+	} else {
+		pfLink.Attrs().Vfs[vfIndex].Trust = 0
+	}
+
+	return nil
+}
+
+func (p *pfMockNetlinkLib) LinkSetVfState(pfLink netlink.Link, vfIndex int, state uint32) error {
+	p.recordMethodCall("LinkSetVfState %s %d %d", pfLink.Attrs().Name, vfIndex, state)
+	pfLink.Attrs().Vfs[vfIndex].LinkState = state
+	return nil
+}
+
+func (p *pfMockNetlinkLib) LinkSetMTU(link netlink.Link, mtu int) error {
+	p.recordMethodCall("LinkSetMTU %s %d", link.Attrs().Name, mtu)
+	return netlink.LinkSetMTU(link, mtu)
+}
+
+func (p *pfMockNetlinkLib) LinkDelAltName(link netlink.Link, name string) error {
+	p.recordMethodCall("LinkDelAltName %s %s", link.Attrs().Name, name)
+	return netlink.LinkDelAltName(link, name)
+}
+
+func (p *pfMockNetlinkLib) recordMethodCall(format string, a ...any) {
+	message := fmt.Sprintf(format+"\n", a...)
+	f, err := os.OpenFile(p.methodCallsRecordingFilePath,
+		os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		log.Printf("Can't open file to record method call [%s]: %v\n", message, err)
+		return
+	}
+	defer f.Close()
+	if _, err := f.WriteString(message); err != nil {
+		log.Printf("Can't write on file [%s] to record method call [%s]: %v\n", p.methodCallsRecordingFilePath, message, err)
+	}
+}
+
+func mustParseMAC(x string) net.HardwareAddr {
+	ret, err := net.ParseMAC(x)
+	if err != nil {
+		panic(err)
+	}
+	return ret
 }

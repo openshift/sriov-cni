@@ -4,13 +4,14 @@ import (
 	"sync/atomic"
 	"time"
 
-	mocks_utils "github.com/k8snetworkplumbingwg/sriov-cni/pkg/utils/mocks"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	"github.com/stretchr/testify/mock"
 
+	"github.com/stretchr/testify/mock"
 	"github.com/vishvananda/netlink"
 	"golang.org/x/sys/unix"
+
+	mocks_utils "github.com/k8snetworkplumbingwg/sriov-cni/pkg/utils/mocks"
 )
 
 var _ = Describe("Packets", func() {
@@ -31,7 +32,7 @@ var _ = Describe("Packets", func() {
 				RawFlags: atomic.LoadUint32(rawFlagsAtomic),
 			}}
 
-			mockedNetLink.On("LinkByName", "dummylink").Return(fakeLink, nil).Run(func(args mock.Arguments) {
+			mockedNetLink.On("LinkByName", "dummylink").Return(fakeLink, nil).Run(func(_ mock.Arguments) {
 				fakeLink.RawFlags = atomic.LoadUint32(rawFlagsAtomic)
 			})
 
