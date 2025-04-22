@@ -14,7 +14,7 @@ IMAGE_BUILDER ?= docker
 TIMEOUT = 30
 COVERAGE_DIR = $(CURDIR)/test/coverage
 COVERAGE_MODE = atomic
-COVERAGE_PROFILE = $(COVERAGE_DIR)/cover.out
+COVERAGE_PROFILE = $(COVERAGE_DIR)/cover-unit.out
 
 # Docker
 IMAGEDIR=$(CURDIR)/images
@@ -92,6 +92,23 @@ image: ; $(info Building Docker image...) @ ## Build SR-IOV CNI docker image
 
 test-image: image
 	$Q $(IMAGEDIR)/image_test.sh $(IMAGE_BUILDER) $(TAG)
+
+BASH_UNIT=$(BINDIR)/bash_unit
+$(BASH_UNIT): $(BINDIR)
+	curl -L https://github.com/pgrange/bash_unit/raw/refs/tags/v2.3.2/bash_unit > bin/bash_unit
+	chmod a+x bin/bash_unit
+
+test-integration: $(BASH_UNIT)
+	mkdir -p $(COVERAGE_DIR)/integration
+	GOCOVERDIR=$(COVERAGE_DIR)/integration $(BASH_UNIT) test/integration/test_*.sh
+	go tool covdata textfmt -pkg github.com/k8snetworkplumbingwg/sriov-cni/... -i $(COVERAGE_DIR)/integration -o test/coverage/cover-integration.out
+
+GOCOVMERGE = $(BINDIR)/gocovmerge
+gocovmerge: ## Download gocovmerge locally if necessary.
+	GOBIN=$(BINDIR) $(GO) install github.com/shabbyrobe/gocovmerge/cmd/gocovmerge@v0.0.0-20230507112040-c3350d9342df
+
+merge-test-coverage: gocovmerge
+	$(GOCOVMERGE) $(COVERAGE_DIR)/cover-*.out > $(COVERAGE_DIR)/cover.out
 
 # Misc
 .PHONY: deps-update
