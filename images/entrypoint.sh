@@ -1,7 +1,7 @@
 #!/bin/sh
 
 # Always exit on errors.
-set -e
+set -ex
 
 # Give help text for parameters.
 usage()
@@ -57,6 +57,9 @@ get_source_folder_for_rhel_version()
         ;;
         9)
         sourcedir=/usr/bin/rhel9
+        ;;
+        10)
+        sourcedir=/usr/bin/rhel9 # rhel10 images are not yet available but rhel9 binaries should be compatible with rhel10
         ;;
         *)
         echo "ERROR: RHEL Major Version Unsupported, rhelmajor=${rhelmajor}"
