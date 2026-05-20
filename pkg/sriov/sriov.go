@@ -212,7 +212,7 @@ func (s *sriovManager) ReleaseVF(conf *sriovtypes.NetConf, podifName string, net
 			return fmt.Errorf("failed to rename link %s to host name %s: %q", podifName, conf.OrigVfState.HostIFName, err)
 		}
 
-		if conf.MAC != "" {
+		if conf.OrigVfState.EffectiveMAC != "" {
 			// reset effective MAC address
 			logging.Debug("Reset effective MAC address",
 				"func", "ReleaseVF",
@@ -405,8 +405,8 @@ func (s *sriovManager) ResetVFConfig(conf *sriovtypes.NetConf) error {
 		}
 	}
 
-	// Restore the original administrative MAC address
-	if conf.MAC != "" {
+	// Restore the original administrative MAC address if exist in the cached state
+	if conf.OrigVfState.AdminMAC != "" {
 		// when we restore the original hardware mac address we may get a device or resource busy. so we introduce retry
 		if err := utils.SetVFHardwareMAC(s.nLink, conf.Master, conf.VFID, conf.OrigVfState.AdminMAC); err != nil {
 			return fmt.Errorf("failed to restore original administrative MAC address %s: %v", conf.OrigVfState.AdminMAC, err)
