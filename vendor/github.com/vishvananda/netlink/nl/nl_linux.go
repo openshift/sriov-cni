@@ -16,6 +16,7 @@ import (
 	"unsafe"
 
 	"github.com/vishvananda/netns"
+	"golang.org/x/sys/cpu"
 	"golang.org/x/sys/unix"
 )
 
@@ -58,6 +59,8 @@ func (errDumpInterrupted) Error() string {
 	return "results may be incomplete or inconsistent"
 }
 
+func (errDumpInterrupted) Temporary() bool { return true }
+
 // Before errDumpInterrupted was introduced, EINTR was returned when a netlink
 // response had NLM_F_DUMP_INTR. Retain backward compatibility with code that
 // may be checking for EINTR using Is.
@@ -76,24 +79,14 @@ func GetIPFamily(ip net.IP) int {
 	return FAMILY_V6
 }
 
-var nativeEndian binary.ByteOrder
-
 // NativeEndian gets native endianness for the system
 func NativeEndian() binary.ByteOrder {
-	if nativeEndian == nil {
-		var x uint32 = 0x01020304
-		if *(*byte)(unsafe.Pointer(&x)) == 0x01 {
-			nativeEndian = binary.BigEndian
-		} else {
-			nativeEndian = binary.LittleEndian
-		}
-	}
-	return nativeEndian
+	return binary.NativeEndian
 }
 
 // Byte swap a 16 bit value if we aren't big endian
 func Swap16(i uint16) uint16 {
-	if NativeEndian() == binary.BigEndian {
+	if cpu.IsBigEndian {
 		return i
 	}
 	return (i&0xff00)>>8 | (i&0xff)<<8
@@ -101,7 +94,7 @@ func Swap16(i uint16) uint16 {
 
 // Byte swap a 32 bit value if aren't big endian
 func Swap32(i uint32) uint32 {
-	if NativeEndian() == binary.BigEndian {
+	if cpu.IsBigEndian {
 		return i
 	}
 	return (i&0xff000000)>>24 | (i&0xff0000)>>8 | (i&0xff00)<<8 | (i&0xff)<<24
@@ -472,6 +465,8 @@ type NetlinkRequest struct {
 	Data    []NetlinkRequestData
 	RawData []byte
 	Sockets map[int]*SocketHandle
+
+	RetryInterrupted bool
 }
 
 // Serialize the Netlink Request into a byte array
@@ -517,15 +512,32 @@ func (req *NetlinkRequest) AddRawData(data []byte) {
 // If the returned error is [ErrDumpInterrupted], results may be inconsistent
 // or incomplete.
 func (req *NetlinkRequest) Execute(sockType int, resType uint16) ([][]byte, error) {
-	var res [][]byte
-	err := req.ExecuteIter(sockType, resType, func(msg []byte) bool {
-		res = append(res, msg)
-		return true
-	})
-	if err != nil && !errors.Is(err, ErrDumpInterrupted) {
-		return nil, err
+	attempts := 1
+	if req.RetryInterrupted {
+		// Only retry if the Request is configured to do so for backwards compat.
+		attempts = 10
 	}
-	return res, err
+
+	var lastRes [][]byte
+	for range attempts {
+		var res [][]byte
+		err := req.executeIter(sockType, resType, func(msg []byte) bool {
+			res = append(res, msg)
+			return true
+		})
+		if err == nil {
+			return res, nil
+		}
+		lastRes = res
+
+		if !errors.Is(err, ErrDumpInterrupted) {
+			// Do not wrap the error from ExecuteIter. It gets type-asserted and
+			// replaced with sentinels in some callers, and wrapping breaks that.
+			return nil, err
+		}
+	}
+
+	return lastRes, fmt.Errorf("execute netlink request after %d attempts: %w", attempts, ErrDumpInterrupted)
 }
 
 // ExecuteIter executes the request against the given sockType.
@@ -535,10 +547,25 @@ func (req *NetlinkRequest) Execute(sockType int, resType uint16) ([][]byte, erro
 // If the returned error is [ErrDumpInterrupted], results may be inconsistent
 // or incomplete.
 //
-// Thread safety: ExecuteIter holds a lock on the socket until
-// it finishes iteration so the callback must not call back into
-// the netlink API.
+// Thread safety: ExecuteIter holds a lock on the socket until it finishes
+// iteration, so the callback must not call back into the netlink API. When
+// RetryInterrupted is enabled, messages are buffered until a complete dump is
+// received and then passed to the callback after the socket lock is released.
 func (req *NetlinkRequest) ExecuteIter(sockType int, resType uint16, f func(msg []byte) bool) error {
+	if !req.RetryInterrupted {
+		return req.executeIter(sockType, resType, f)
+	}
+
+	msgs, err := req.Execute(sockType, resType)
+	for _, msg := range msgs {
+		if cont := f(msg); !cont {
+			break
+		}
+	}
+	return err
+}
+
+func (req *NetlinkRequest) executeIter(sockType int, resType uint16, f func(msg []byte) bool) error {
 	var (
 		s   *NetlinkSocket
 		err error
@@ -565,9 +592,8 @@ func (req *NetlinkRequest) ExecuteIter(sockType int, resType uint16, f func(msg 
 			return err
 		}
 		if EnableErrorMessageReporting {
-			if err := s.SetExtAck(true); err != nil {
-				return err
-			}
+			// ignore error, it's non-critical
+			_ = s.SetExtAck(true)
 		}
 
 		defer s.Close()
@@ -626,11 +652,19 @@ done:
 				err = syscall.Errno(-errno)
 
 				unreadData := m.Data[4:]
-				if m.Header.Flags&unix.NLM_F_ACK_TLVS != 0 && len(unreadData) > syscall.SizeofNlMsghdr {
-					// Skip the echoed request message.
-					echoReqH := (*syscall.NlMsghdr)(unsafe.Pointer(&unreadData[0]))
-					unreadData = unreadData[nlmAlignOf(int(echoReqH.Len)):]
 
+				if m.Header.Type == unix.NLMSG_ERROR {
+					if m.Header.Flags&unix.NLM_F_CAPPED != 0 {
+						// The request payload is capped, just skip the nlmsghdr
+						unreadData = unreadData[syscall.SizeofNlMsghdr:]
+					} else {
+						// Skip the entire request message
+						echoReqH := (*syscall.NlMsghdr)(unsafe.Pointer(&unreadData[0]))
+						unreadData = unreadData[nlmAlignOf(int(echoReqH.Len)):]
+					}
+				}
+
+				if m.Header.Flags&unix.NLM_F_ACK_TLVS != 0 && len(unreadData) > syscall.SizeofNlMsghdr {
 					// Annotate `err` using nlmsgerr attributes.
 					for len(unreadData) >= syscall.SizeofRtAttr {
 						attr := (*syscall.RtAttr)(unsafe.Pointer(&unreadData[0]))
@@ -712,6 +746,11 @@ func getNetlinkSocket(protocol int) (*NetlinkSocket, error) {
 	if err := unix.Bind(fd, &s.lsa); err != nil {
 		unix.Close(fd)
 		return nil, err
+	}
+
+	if EnableErrorMessageReporting {
+		// ignore error, it's non-critical
+		_ = s.SetExtAck(true)
 	}
 
 	return s, nil
@@ -827,8 +866,8 @@ func SubscribeAt(newNs, curNs netns.NsHandle, protocol int, groups ...uint) (*Ne
 	return Subscribe(protocol, groups...)
 }
 
-func (s *NetlinkSocket) Close() {
-	s.file.Close()
+func (s *NetlinkSocket) Close() error {
+	return s.file.Close()
 }
 
 func (s *NetlinkSocket) GetFd() int {
@@ -1081,8 +1120,9 @@ type SocketHandle struct {
 }
 
 // Close closes the netlink socket
-func (sh *SocketHandle) Close() {
+func (sh *SocketHandle) Close() error {
 	if sh.Socket != nil {
-		sh.Socket.Close()
+		return sh.Socket.Close()
 	}
+	return nil
 }
