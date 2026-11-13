@@ -15,6 +15,7 @@
 package logging
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -59,15 +60,21 @@ const (
 const (
 	defaultLogLevel        = InfoLevel
 	defaultTimestampFormat = time.RFC3339Nano
+	defaultLogFileBaseDir  = "/var/log/cni-log"
 
 	logFileReqFailMsg              = "cni-log: filename is required when logging to stderr is off - will not log anything\n"
 	logFileFailMsg                 = "cni-log: failed to set log file '%s'\n"
+	logFileFailMsgWithError        = "cni-log: failed to set log file '%s', err: %v\n"
 	setLevelFailMsg                = "cni-log: cannot set logging level to '%s'\n"
-	symlinkEvalFailMsg             = "cni-log: unable to evaluate symbolic links on path '%v'"
-	emptyStringFailMsg             = "cni-log: unable to resolve empty string"
+	absolutePathsFailMsg           = "absolute log file paths are not allowed"
+	baseDirectoryEscapeFailMsg     = "log file path escapes base directory"
+	baseDirAsFileFailMsg           = "log file path resolves to base directory"
+	symlinkEvalFailMsg             = "symbolic links are not allowed"
 	structuredLoggingOddArguments  = "must provide an even number of arguments for structured logging"
 	structuredPrefixerOddArguments = "prefixer must return an even number of arguments for structured logging"
 )
+
+var logFileBaseDir string
 
 var levelMap = map[string]Level{
 	panicStr:   PanicLevel,
@@ -143,6 +150,7 @@ func init() {
 
 func initLogger() {
 	logger = &lumberjack.Logger{}
+	logFileBaseDir = defaultLogFileBaseDir
 
 	// Set default options.
 	SetLogOptions(nil)
@@ -224,10 +232,28 @@ func SetLogOptions(options *LogOptions) {
 	}
 }
 
-// SetLogFile sets logging file.
+// SetLogFileBaseDir overrides the default base directory for log files.
+// All paths passed to SetLogFile are resolved relative to this directory;
+// absolute paths and ".." traversals are caught by SetLogFile's path validation.
+// Empty or "." input resets to the default ("/var/log/cni-log").
+//
+// Examples:
+//
+//	SetLogFileBaseDir("/var/log/my-plugin") // logs resolve under /var/log/my-plugin/
+//	SetLogFileBaseDir("")                   // resets to /var/log/cni-log/
+func SetLogFileBaseDir(dir string) {
+	cleaned := filepath.Clean(dir)
+	if cleaned == "." {
+		logFileBaseDir = defaultLogFileBaseDir
+		return
+	}
+	logFileBaseDir = cleaned
+}
+
+// SetLogFile sets the log file path, resolved relative to the base directory.
+// If filename is empty, file logging is disabled; an error is printed to stderr
+// when stderr logging is also off, since no output destination would remain.
 func SetLogFile(filename string) {
-	// Allow logging to stderr only. Print an error a single time when this is set to the empty string but stderr
-	// logging is off.
 	if filename == "" {
 		if !logToStderr {
 			fmt.Fprint(os.Stderr, logFileReqFailMsg)
@@ -236,18 +262,18 @@ func SetLogFile(filename string) {
 		return
 	}
 
-	fp, err := resolvePath(filename)
+	safePath, err := resolveLogFilePath(filename)
 	if err != nil {
-		fmt.Fprint(os.Stderr, err)
+		fmt.Fprintf(os.Stderr, logFileFailMsgWithError, filename, err)
 		return
 	}
 
-	if !isLogFileWritable(fp) {
+	if !isLogFileWritable(safePath) {
 		fmt.Fprintf(os.Stderr, logFileFailMsg, filename)
 		return
 	}
 
-	logger.Filename = filename
+	logger.Filename = safePath
 	logWriter = logger
 }
 
@@ -479,17 +505,50 @@ func isSymLink(path string) bool {
 	return false
 }
 
-// resolvePath will try to resolve the provided path. If path is empty or is a symlink, return an error.
-func resolvePath(path string) (string, error) {
-	if path == "" {
-		return "", fmt.Errorf(emptyStringFailMsg)
+func pathContainsSymlink(basePath, fullPath string) bool {
+	rel, err := filepath.Rel(basePath, fullPath)
+	if err != nil {
+		return true
 	}
 
-	if isSymLink(path) {
-		return "", fmt.Errorf(symlinkEvalFailMsg, path)
+	parts := strings.Split(rel, string(os.PathSeparator))
+	current := basePath
+	for _, part := range parts {
+		if part == "" || part == "." {
+			continue
+		}
+		current = filepath.Join(current, part)
+		if isSymLink(current) {
+			return true
+		}
+	}
+	return false
+}
+
+func resolveLogFilePath(userPath string) (string, error) {
+	cleaned := filepath.Clean(userPath)
+
+	if filepath.IsAbs(cleaned) {
+		return "", errors.New(absolutePathsFailMsg)
 	}
 
-	return filepath.Clean(path), nil
+	joined := filepath.Join(logFileBaseDir, cleaned)
+	resolved := filepath.Clean(joined)
+
+	if resolved == logFileBaseDir {
+		return "", errors.New(baseDirAsFileFailMsg)
+	}
+
+	baseDirSlash := logFileBaseDir + string(os.PathSeparator)
+	if !strings.HasPrefix(resolved, baseDirSlash) {
+		return "", errors.New(baseDirectoryEscapeFailMsg)
+	}
+
+	if pathContainsSymlink(logFileBaseDir, resolved) {
+		return "", errors.New(symlinkEvalFailMsg)
+	}
+
+	return resolved, nil
 }
 
 func validateLogLevel(level Level) bool {
